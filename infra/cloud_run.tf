@@ -105,6 +105,15 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.briefing_email_to
       }
       env {
+        name = "RESEND_WEBHOOK_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.resend_webhook_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
         name  = "CORS_ORIGINS"
         value = "https://salon-frontend-qc33oa7roq-pd.a.run.app"
       }
@@ -122,6 +131,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.anthropic_api_key,
     google_secret_manager_secret_version.internal_secret,
     google_secret_manager_secret_version.briefing_resend_api_key,
+    google_secret_manager_secret_version.resend_webhook_secret,
     google_storage_bucket.briefings,
   ]
 }

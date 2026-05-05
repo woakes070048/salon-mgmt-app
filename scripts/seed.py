@@ -21,6 +21,8 @@ from app.models.service import ServiceCategory, Service, PricingType
 from app.models.provider_service_price import ProviderServicePrice
 from app.models.schedule import TenantOperatingHours, ProviderSchedule
 from app.models.retail import RetailItem
+from app.models.user import User, UserRole
+from app.auth import hash_password
 from app.models.promotion import TenantPromotion, PromotionKind
 from app.models.i18n import ServiceCategoryTranslation, ServiceTranslation
 
@@ -877,6 +879,30 @@ async def seed():
                 if changed:
                     promo_count += 1
         print(f"Promotions: {promo_count} created/updated")
+
+        # ── Admin user ───────────────────────────────────────────────────────
+        # Created once; never overwrites an existing account.
+        # Password sourced from ADMIN_PASSWORD env var so it never lands in code.
+        admin_email = "frederick.ferguson@gmail.com"
+        admin_pw = os.environ.get("ADMIN_PASSWORD", "")
+        existing_admin = (
+            await db.execute(select(User).where(User.tenant_id == tid, User.email == admin_email))
+        ).scalar_one_or_none()
+        if existing_admin is None and admin_pw:
+            db.add(User(
+                tenant_id=tid,
+                email=admin_email,
+                password_hash=hash_password(admin_pw),
+                role=UserRole.tenant_admin,
+                is_active=True,
+                first_name="Freddy",
+                last_name="Ferguson",
+            ))
+            print(f"Created admin user: {admin_email}")
+        elif existing_admin is None:
+            print(f"WARNING: admin user {admin_email} not found and ADMIN_PASSWORD not set — skipping")
+        else:
+            print(f"Admin user already exists: {admin_email}")
 
         await db.commit()
         print("\nSeed complete.")

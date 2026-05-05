@@ -53,3 +53,9 @@ variable "briefing_email_to" {
   description = "Recipient address for the developer daily briefing"
   type        = string
 }
+
+variable "resend_webhook_secret" {
+  description = "Resend svix webhook signing secret (whsec_...) for inbound email signature validation"
+  type        = string
+  sensitive   = true
+}

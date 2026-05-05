@@ -107,3 +107,17 @@ resource "google_secret_manager_secret_version" "briefing_resend_api_key" {
   secret      = google_secret_manager_secret.briefing_resend_api_key.id
   secret_data = var.briefing_resend_api_key
 }
+
+resource "google_secret_manager_secret" "resend_webhook_secret" {
+  secret_id = "salon-resend-webhook-secret"
+  replication {
+    auto {
+    }
+  }
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "resend_webhook_secret" {
+  secret      = google_secret_manager_secret.resend_webhook_secret.id
+  secret_data = var.resend_webhook_secret
+}

@@ -713,3 +713,22 @@ Replace template-built rationale strings in `explainer.py` with a Haiku call tha
 **Note:** The template explainer already produces usable rationale strings. Only build this if the templated text feels stiff in real use at Salon Lyol. Evaluate after P3-7 is live.
 
 **Depends on:** Scheduling engine (built), P3-7 (inbound email, to validate that rationale quality matters at volume).
+
+### P3-9 · Email bounce handling
+
+When Resend fires an `email.bounced` or `email.complained` webhook event for an outbound email (confirmation, reminder, cancellation), mark the recipient client's email address as invalid so staff are alerted rather than silently losing messages.
+
+**What to build:**
+
+- Expand `POST /webhooks/email/inbound` (or a sibling route) to handle `email.bounced` and `email.complained` event types
+- On bounce/complaint: look up the `to` address against `clients.email`; if matched, set a new `email_status` column (`valid` | `bounced` | `complained`) on the `clients` table
+- Surface `email_status` in the client card slide-over: show a warning badge ("Email address may be invalid — last send bounced") when status is not `valid`
+- Do not suppress future sends automatically — let staff decide (could be a typo they can fix)
+
+**What to skip:** open/click tracking — not actionable enough to justify the complexity.
+
+**Resend event shape:** `email.bounced` and `email.complained` share the same svix signature validation already in place. The `data.to` field is an array of recipient addresses.
+
+**Migration:** add `email_status VARCHAR(20) NOT NULL DEFAULT 'valid'` to `clients`.
+
+**Depends on:** P3-7 webhook infrastructure (shared signature validation, same endpoint pattern).
