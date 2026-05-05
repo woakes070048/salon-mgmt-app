@@ -669,3 +669,70 @@ async def get_login_logs(
         )
         for r in rows
     ]
+
+
+# ── Zero-appointment client cleanup ──────────────────────────────────────────
+
+class ZeroApptClientSample(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: str | None
+    cell_phone: str | None
+
+
+class ZeroApptPreviewOut(BaseModel):
+    count: int
+    sample: list[ZeroApptClientSample]
+
+
+async def _zero_appt_client_ids(tenant_id: uuid.UUID, db: AsyncSession) -> list[uuid.UUID]:
+    from sqlalchemy import func as _func
+    booked = (await db.execute(
+        select(Appointment.client_id).where(Appointment.tenant_id == tenant_id).distinct()
+    )).scalars().all()
+    booked_set = set(booked)
+    all_clients = (await db.execute(
+        select(Client).where(Client.tenant_id == tenant_id, Client.is_active == True)  # noqa: E712
+    )).scalars().all()
+    return [c.id for c in all_clients if c.id not in booked_set]
+
+
+@router.get("/cleanup/zero-appointment-clients", response_model=ZeroApptPreviewOut)
+async def preview_zero_appt_clients(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> ZeroApptPreviewOut:
+    ids = await _zero_appt_client_ids(current_user.tenant_id, db)
+    if not ids:
+        return ZeroApptPreviewOut(count=0, sample=[])
+    clients = (await db.execute(
+        select(Client).where(Client.id.in_(ids[:10]))
+    )).scalars().all()
+    return ZeroApptPreviewOut(
+        count=len(ids),
+        sample=[
+            ZeroApptClientSample(
+                id=str(c.id),
+                first_name=c.first_name,
+                last_name=c.last_name,
+                email=c.email,
+                cell_phone=c.cell_phone,
+            )
+            for c in clients
+        ],
+    )
+
+
+@router.delete("/cleanup/zero-appointment-clients")
+async def delete_zero_appt_clients(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    from sqlalchemy import delete as _delete
+    ids = await _zero_appt_client_ids(current_user.tenant_id, db)
+    if not ids:
+        return {"deleted": 0}
+    await db.execute(_delete(Client).where(Client.id.in_(ids)))
+    await db.commit()
+    return {"deleted": len(ids)}

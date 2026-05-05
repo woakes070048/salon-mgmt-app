@@ -106,6 +106,29 @@ export function getLoginLogs(limit = 500): Promise<LoginLogEntry[]> {
   return api.get<LoginLogEntry[]>(`/admin/login-logs?limit=${limit}`)
 }
 
+// ── Zero-appointment client cleanup ──────────────────────────────────────────
+
+export interface ZeroApptClientSample {
+  id: string
+  first_name: string
+  last_name: string
+  email: string | null
+  cell_phone: string | null
+}
+
+export interface ZeroApptPreview {
+  count: number
+  sample: ZeroApptClientSample[]
+}
+
+export function previewZeroApptClients(): Promise<ZeroApptPreview> {
+  return api.get<ZeroApptPreview>('/admin/cleanup/zero-appointment-clients')
+}
+
+export function deleteZeroApptClients(): Promise<{ deleted: number }> {
+  return api.delete<{ deleted: number }>('/admin/cleanup/zero-appointment-clients')
+}
+
 // ── Legacy data import ────────────────────────────────────────────────────────
 
 export interface ImportResult {
