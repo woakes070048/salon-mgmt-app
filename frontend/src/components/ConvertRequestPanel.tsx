@@ -8,6 +8,9 @@ import { listAppointments, type AppointmentItem } from '@/api/appointments'
 import { type AppointmentRequest, convertRequest } from '@/api/appointmentRequests'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { useAuth } from '@/store/auth'
+import { type Recommendation } from '@/api/scheduling'
+import RecommendPanel from '@/components/scheduling/RecommendPanel'
 
 interface ItemFormState {
   requestItemId: string
@@ -30,6 +33,7 @@ interface Props {
 export default function ConvertRequestPanel({ request, date, onDateChange, onClose, onConverted }: Props) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { user } = useAuth()
 
   const [clientMode, setClientMode] = useState<'new' | 'existing'>('new')
   const [newFirst, setNewFirst] = useState('')
@@ -217,6 +221,24 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
     return Array.from(seen)
   }
 
+  function applyRecommendation(rec: Recommendation) {
+    setItems(prev =>
+      rec.items.map((ri, idx) => {
+        const existing = prev[idx]
+        const svc = services.find(s => s.id === ri.service_id)
+        return {
+          requestItemId: existing?.requestItemId ?? '',
+          serviceId: ri.service_id,
+          providerId: ri.provider_id,
+          startTime: ri.start_time,
+          durationMinutes: ri.duration_minutes,
+          price: svc?.default_price != null ? String(svc.default_price) : existing?.price ?? '',
+          notes: existing?.notes ?? '',
+        }
+      })
+    )
+  }
+
   async function handleSubmit(force = false) {
     setError(null)
     setClashWarning(null)
@@ -281,6 +303,19 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground italic">
             "{request.special_note}"
           </div>
+        )}
+
+        {/* Booking recommendations — pre-populated from request */}
+        {user && date && items.some(it => it.serviceId) && (
+          <RecommendPanel
+            tenantId={user.tenant_id}
+            services={items.map(it => ({
+              serviceId: it.serviceId,
+              preferredProviderId: it.providerId || undefined,
+            })).filter(s => s.serviceId)}
+            desiredDate={date}
+            onSelect={applyRecommendation}
+          />
         )}
 
         {/* Client */}

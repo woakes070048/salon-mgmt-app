@@ -13,6 +13,14 @@ class PricingType(str, enum.Enum):
     hourly = "hourly"
 
 
+class TenantStationType(str, enum.Enum):
+    """Station type required for a service. Same values as scheduling.TenantStationType."""
+    styling = "styling"
+    colour = "colour"
+    multi_purpose = "multi_purpose"
+    processing = "processing"
+
+
 class ServiceCategory(TenantScopedBase):
     __tablename__ = "service_categories"
 
@@ -44,3 +52,7 @@ class Service(TenantScopedBase):
     suggestions: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_complimentary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    required_station_type: Mapped[TenantStationType | None] = mapped_column(
+        Enum(TenantStationType, name="tenantstation_type", create_type=False), nullable=True
+    )

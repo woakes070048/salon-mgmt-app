@@ -98,6 +98,7 @@ class Provider(TenantScopedBase):
     can_be_cashier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     makes_appointments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     has_appointments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    available_during_processing: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     booking_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     online_booking_visibility: Mapped[OnlineBookingVisibility] = mapped_column(
         Enum(OnlineBookingVisibility),

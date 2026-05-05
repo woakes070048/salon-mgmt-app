@@ -38,6 +38,10 @@ class Tenant(Base):
     country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     hours_summary: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    booking_email: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    providers_available_during_processing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -576,6 +576,8 @@ Freddy's 8 AM daily email covering salon software market moves, AI feature launc
 
 **Depends on:** P3-1.
 
+**Backlog note:** Add a tenant-level SMTP/Resend setting for briefing email delivery — currently the sender domain (`salonlyol.ca`) must be verified in Resend before production sends can use a branded from address. Consider surfacing this in Settings → Email alongside the existing SMTP config, or as a dedicated Briefing delivery setting.
+
 ---
 
 ### P3-4 · Briefing Engine — `salon_owner` audience

@@ -8,6 +8,9 @@ import { listServices, type Service } from '@/api/services'
 import { type Provider } from '@/api/providers'
 import { type ProviderWorkStatus } from '@/api/schedules'
 import { api } from '@/api/client'
+import { useAuth } from '@/store/auth'
+import { type Recommendation } from '@/api/scheduling'
+import RecommendPanel from '@/components/scheduling/RecommendPanel'
 import {
   Dialog,
   DialogContent,
@@ -70,6 +73,7 @@ export default function BookingForm({
 }: Props) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { user } = useAuth()
 
   // ── Step: 'client' | 'items' | 'confirm'
   const { formatTime: ft } = useTimeFormat()
@@ -152,6 +156,24 @@ export default function BookingForm({
 
   function removeItem(idx: number) {
     setItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function applyRecommendation(rec: Recommendation) {
+    const newItems: ItemDraft[] = []
+    for (const ri of rec.items) {
+      const svc = services.find((s) => s.id === ri.service_id)
+      const prov = providers.find((p) => p.id === ri.provider_id)
+      if (!svc || !prov) continue
+      newItems.push({
+        service: svc,
+        provider: prov,
+        startTime: ri.start_time,
+        price: svc.default_price ?? 0,
+      })
+    }
+    if (newItems.length > 0) {
+      setItems(newItems)
+    }
   }
 
   // ── Save
@@ -294,6 +316,20 @@ export default function BookingForm({
             <p className="text-sm font-medium">
               {selectedClient!.first_name} {selectedClient!.last_name}
             </p>
+
+            {/* Booking recommendations */}
+            {user && (
+              <RecommendPanel
+                tenantId={user.tenant_id}
+                clientId={selectedClient?.id}
+                services={items.map((it) => ({
+                  serviceId: it.service.id,
+                  preferredProviderId: it.provider.id,
+                }))}
+                desiredDate={date}
+                onSelect={applyRecommendation}
+              />
+            )}
 
             {/* Added items */}
             {items.length > 0 && (
