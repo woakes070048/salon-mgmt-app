@@ -212,19 +212,26 @@ async def receive_inbound_email(
 
     from_email = _extract_email_address(from_raw)
 
-    # ── Find tenant by booking_email ──────────────────────────────────────────
+    # ── Find tenant by inbound address (then fall back to booking_email) ──────
     tenants = (await db.execute(select(Tenant).where(Tenant.is_active == True))).scalars().all()  # noqa: E712
 
     to_emails_lower = [_extract_email_address(addr) for addr in to_list]
 
     matched_tenant: Tenant | None = None
     for tenant in tenants:
-        if not tenant.booking_email:
-            continue
-        tenant_booking_email = tenant.booking_email.strip().lower()
-        if tenant_booking_email in to_emails_lower:
-            matched_tenant = tenant
-            break
+        # Primary: match on Roux-administered inbound routing address
+        if tenant.booking_inbound_address:
+            if tenant.booking_inbound_address.strip().lower() in to_emails_lower:
+                matched_tenant = tenant
+                break
+    if matched_tenant is None:
+        # Fallback: match on the tenant's public-facing booking_email
+        for tenant in tenants:
+            if not tenant.booking_email:
+                continue
+            if tenant.booking_email.strip().lower() in to_emails_lower:
+                matched_tenant = tenant
+                break
 
     if matched_tenant is None:
         # Not addressed to any of our booking inboxes — ignore silently
