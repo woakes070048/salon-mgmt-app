@@ -13,11 +13,6 @@ interface Props {
   onSelect: (rec: Recommendation) => void
 }
 
-function minutesToHhmm(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
 
 function formatHhmm(hhmm: string): string {
   const [hStr, mStr] = hhmm.split(':')
