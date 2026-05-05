@@ -103,7 +103,17 @@
     "password_placeholder": "At least 8 characters",
     "confirm_placeholder": "Repeat password",
     "set_password": "Set password",
-    "registration_failed": "Registration failed"
+    "registration_failed": "Registration failed",
+    "forgot_password": "Forgot password?",
+    "forgot_eyebrow": "Password reset",
+    "forgot_heading": "Forgot your password?",
+    "forgot_subheading": "Enter your email and we'll send a reset link.",
+    "forgot_submit": "Send reset link",
+    "forgot_sending": "Sending…",
+    "forgot_sent_eyebrow": "Check your inbox",
+    "forgot_sent_heading": "Reset link sent",
+    "forgot_sent_message": "If an account exists for that email, a reset link is on its way. Check your spam folder if you don't see it.",
+    "back_to_sign_in": "Back to sign in"
   },
   "landing": {
     "sign_in": "Sign in",
@@ -822,6 +832,8 @@
     "action_edit": "Edit",
     "send_welcome": "Send welcome",
     "sent_confirm": "Sent!",
+    "send_reset": "Send reset link",
+    "send_reset_confirm": "Sent!",
     "action_deactivate": "Deactivate",
     "action_reactivate": "Reactivate",
     "confirm_delete": "Permanently delete?",

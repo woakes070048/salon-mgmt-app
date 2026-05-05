@@ -40,6 +40,10 @@ export function sendWelcomeEmail(id: string): Promise<void> {
   return api.post<void>(`/admin/users/${id}/send-welcome`, {})
 }
 
+export function sendResetLink(id: string): Promise<void> {
+  return api.post<void>(`/admin/users/${id}/send-reset`, {})
+}
+
 // ── Email config ──────────────────────────────────────────────────────────────
 
 export interface EmailConfig {

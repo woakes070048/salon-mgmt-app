@@ -7,6 +7,7 @@ import {
   createUser,
   deleteUser,
   listUsers,
+  sendResetLink,
   sendWelcomeEmail,
   updateUser,
 } from '@/api/admin'
@@ -263,6 +264,13 @@ function UserRow({ user }: { user: AdminUser }) {
     },
   })
 
+  const resetMutation = useMutation({
+    mutationFn: () => sendResetLink(user.id),
+    onError: (err: unknown) => {
+      setActionError((err as Error).message ?? 'Failed to send email')
+    },
+  })
+
   const toggleMutation = useMutation({
     mutationFn: () => updateUser(user.id, { is_active: !user.is_active }),
     onSuccess: () => {
@@ -335,10 +343,22 @@ function UserRow({ user }: { user: AdminUser }) {
                 className="text-xs h-7"
                 disabled={welcomeMutation.isPending}
                 onClick={() => { setActionError(null); welcomeMutation.mutate() }}
-                title="Send welcome / password reset email"
+                title="Send welcome / password setup email"
               >
                 <MailIcon size={13} className="mr-1" />
                 {welcomeMutation.isPending ? t('common.sending') : welcomeMutation.isSuccess ? t('users.sent_confirm') : t('users.send_welcome')}
+              </Button>
+            )}
+            {!isGuest && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs h-7 text-muted-foreground"
+                disabled={resetMutation.isPending}
+                onClick={() => { setActionError(null); resetMutation.mutate() }}
+                title="Send password reset link"
+              >
+                {resetMutation.isPending ? t('common.sending') : resetMutation.isSuccess ? t('users.send_reset_confirm') : t('users.send_reset')}
               </Button>
             )}
             {!isGuest && !confirmDeactivate && (

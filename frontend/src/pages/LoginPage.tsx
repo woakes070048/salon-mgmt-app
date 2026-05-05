@@ -118,6 +118,11 @@ export default function LoginPage() {
                 {t('auth.create_account_link')}
               </Link>
             </p>
+            <p className="text-center text-sm text-muted-foreground">
+              <Link to="/forgot-password" className="text-foreground underline-offset-4 hover:underline">
+                {t('auth.forgot_password')}
+              </Link>
+            </p>
           </form>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import hashlib
 import random
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,7 +13,9 @@ from app.auth import create_access_token, hash_password, verify_password
 from app.config import settings
 from app.database import get_db
 from app.deps import CurrentUser
+from app.email import email_cfg_from_row, send_password_reset_email
 from app.models.client import Client
+from app.models.email_config import TenantEmailConfig
 from app.models.tenant import Tenant
 from app.models.user import LoginLog, PasswordResetToken, User, UserRole
 
@@ -148,6 +151,46 @@ async def register(
         tenant_id=str(user.tenant_id),
     )
     return TokenResponse(access_token=token)
+
+
+class RequestResetRequest(BaseModel):
+    email: EmailStr
+
+
+@router.post("/request-reset", status_code=status.HTTP_204_NO_CONTENT)
+async def request_reset(
+    body: RequestResetRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    user = (
+        await db.execute(
+            select(User).where(User.email == body.email, User.is_active == True)  # noqa: E712
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        return
+
+    email_cfg_row = (
+        await db.execute(
+            select(TenantEmailConfig).where(TenantEmailConfig.tenant_id == user.tenant_id)
+        )
+    ).scalar_one_or_none()
+    if email_cfg_row is None:
+        return
+
+    raw = secrets.token_urlsafe(32)
+    db.add(PasswordResetToken(
+        user_id=user.id,
+        token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=72),
+    ))
+    await db.commit()
+
+    tenant = (
+        await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
+    ).scalar_one()
+    reset_link = f"{settings.frontend_url}/reset-password?token={raw}"
+    await send_password_reset_email(email_cfg_from_row(email_cfg_row), tenant, user.email, reset_link)
 
 
 class ResetPasswordRequest(BaseModel):

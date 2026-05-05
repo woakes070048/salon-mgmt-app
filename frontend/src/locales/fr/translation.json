@@ -103,7 +103,17 @@
     "password_placeholder": "Au moins 8 caractères",
     "confirm_placeholder": "Répéter le mot de passe",
     "set_password": "Définir le mot de passe",
-    "registration_failed": "Échec de l'inscription"
+    "registration_failed": "Échec de l'inscription",
+    "forgot_password": "Mot de passe oublié ?",
+    "forgot_eyebrow": "Réinitialisation du mot de passe",
+    "forgot_heading": "Mot de passe oublié ?",
+    "forgot_subheading": "Entrez votre courriel et nous vous enverrons un lien de réinitialisation.",
+    "forgot_submit": "Envoyer le lien de réinitialisation",
+    "forgot_sending": "Envoi…",
+    "forgot_sent_eyebrow": "Vérifiez votre boîte de réception",
+    "forgot_sent_heading": "Lien envoyé",
+    "forgot_sent_message": "Si un compte existe pour ce courriel, un lien de réinitialisation est en chemin. Vérifiez votre dossier de courrier indésirable si vous ne le voyez pas.",
+    "back_to_sign_in": "Retour à la connexion"
   },
   "landing": {
     "sign_in": "Se connecter",
@@ -822,6 +832,8 @@
     "action_edit": "Modifier",
     "send_welcome": "Envoyer la bienvenue",
     "sent_confirm": "Envoyé !",
+    "send_reset": "Envoyer le lien de réinitialisation",
+    "send_reset_confirm": "Envoyé !",
     "action_deactivate": "Désactiver",
     "action_reactivate": "Réactiver",
     "confirm_delete": "Supprimer définitivement ?",

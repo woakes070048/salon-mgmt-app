@@ -15,7 +15,7 @@ from app.database import get_db
 from app.deps import AdminUser
 from app.legacy_import import import_clients, import_bookings, import_receipts, import_past_unreceipted_bookings, import_on_account_balances
 from app.models.user import LoginLog
-from app.email import AnyEmailConfig, email_cfg_from_row, send_email, send_welcome_email
+from app.email import AnyEmailConfig, email_cfg_from_row, send_email, send_password_reset_email, send_welcome_email
 from app.models.appointment import Appointment, AppointmentItem, AppointmentRequest, AppointmentStatus
 from app.models.client import Client
 from app.models.email_config import TenantEmailConfig
@@ -363,6 +363,33 @@ async def resend_welcome(
         await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
     ).scalar_one()
     await send_welcome_email(smtp_cfg, tenant, user.email, reset_link)
+
+
+@router.post("/users/{user_id}/send-reset", status_code=status.HTTP_204_NO_CONTENT)
+async def send_reset_link(
+    user_id: str,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    smtp_cfg = await _get_email_cfg(current_user.tenant_id, db)
+    user = (
+        await db.execute(
+            select(User).where(
+                User.id == uuid.UUID(user_id),
+                User.tenant_id == current_user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    raw = await _create_reset_token(user.id, db)
+    await db.commit()
+    reset_link = f"{settings.frontend_url}/reset-password?token={raw}"
+    tenant = (
+        await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    ).scalar_one()
+    await send_password_reset_email(smtp_cfg, tenant, user.email, reset_link)
 
 
 # ── Email config ──────────────────────────────────────────────────────────────

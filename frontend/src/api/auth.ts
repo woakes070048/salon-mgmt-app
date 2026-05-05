@@ -41,6 +41,10 @@ export function getMe(): Promise<MeResponse> {
   return api.get<MeResponse>('/auth/me')
 }
 
+export function requestReset(email: string): Promise<void> {
+  return api.post<void>('/auth/request-reset', { email })
+}
+
 export function resetPassword(token: string, password: string): Promise<void> {
   return api.post<void>('/auth/reset-password', { token, password })
 }

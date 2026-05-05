@@ -399,11 +399,81 @@ When an appointment is cancelled from the client card (Clients → client → Ap
 
 ---
 
+### P2-27 · Self-service password reset ("forgot password")
+
+Any user — staff, admin, or client (guest role) — can request a password reset link from the login page when they've forgotten their password. The reset token infrastructure (`PasswordResetToken`, `POST /auth/reset-password`, `ResetPasswordPage`) already exists; what's missing is the self-service request half.
+
+**What needs to be built:**
+
+Backend:
+- `POST /auth/request-reset` — accepts `{ email }`, looks up any active user by email regardless of role. Generates a `PasswordResetToken` (reusing `_create_reset_token` already in `admin.py`), sends a password reset email, and always returns 204 — even when no account exists for that email (prevents account enumeration). Token expires in 1 hour (same as welcome-email tokens).
+- The reset email reuses the existing branded layout (`wrap_branded`) with a single CTA: "Set your password" → `/reset-password?token=…`. Subject line: "Reset your SalonOS password".
+
+Frontend:
+- `LoginPage`: add a "Forgot password?" link below the sign-in form → navigates to `/forgot-password`.
+- New `ForgotPasswordPage` (`/forgot-password`): email input + submit button. On success show a confirmation message ("If an account exists for that email, a reset link is on its way") — no redirect, same page. Matches the existing `ResetPasswordPage` visual style.
+- No changes to `ResetPasswordPage` — it already handles the token-consumption half correctly.
+
+Admin-triggered reset:
+- `UsersPage`: add a "Send reset link" action to each user row (next to Edit role / Delete). Calls a new `POST /admin/users/{user_id}/send-reset` endpoint. Useful when a staff member is locked out and can't self-serve. Shows a toast on success.
+
+**What doesn't change:** The existing welcome-email flow (admin creates user → reset link sent) is unaffected. This item only adds the self-service path.
+
+**Depends on:** SMTP config (already in place via Settings → Email).
+
+---
+
+### P2-28 · Social / SSO login via Auth0
+
+Replace (or augment) the custom JWT auth with Auth0 so that staff and clients can sign in with Google or Apple without managing a separate password. Auth0's free tier covers 7,500 MAUs — enough for all tenants through early multi-tenant rollout.
+
+**Why Auth0 over alternatives:** OIDC-compliant (maps cleanly onto the existing JWT flow), strong FastAPI + React SDKs, social connections (Google, Apple) included on the free tier, and pricing scales predictably. Firebase Auth would be simpler to provision on GCP but pulls toward the Firebase ecosystem, which conflicts with the Cloud SQL / FastAPI stack.
+
+**Scope:**
+
+Backend:
+- Replace `create_access_token` / `verify_password` in `app/auth.py` with Auth0 JWT verification (validate `iss`, `aud`, `exp` on the token; no local secret needed).
+- `POST /auth/login` becomes a thin pass-through or is removed entirely — clients obtain tokens directly from Auth0 and present them as Bearer tokens.
+- User provisioning on first login: if no `users` row exists for the Auth0 `sub`, create one with the appropriate role (`guest` for client portal, `staff` for new invitees). Tenant association still set server-side on first login based on invite or subdomain.
+- `PasswordResetToken` table and `POST /auth/request-reset` (P2-27) become redundant for social-login users — password reset is Auth0's responsibility for those accounts. Keep the email/password path for tenants that prefer it.
+
+Frontend:
+- `LoginPage`: replace the email/password form with an Auth0 `loginWithRedirect` call (React SDK). Keep email/password as a fallback option (Auth0 supports both on the same tenant).
+- `ResetPasswordPage` and `ForgotPasswordPage` (P2-27): only shown for email/password accounts; Auth0 handles reset for social accounts.
+- `store/auth.tsx`: swap local JWT storage for Auth0 `useAuth0` hook; `getAccessTokenSilently()` replaces manual token refresh.
+
+Multi-tenant routing:
+- Auth0 supports multiple applications or a single app with metadata. Simplest approach for Phase 1: one Auth0 application, `tenant_id` stored as a custom claim on the token (set via an Auth0 Action on login). Revisit when multiple tenants need isolated login pages.
+
+**Out of scope for v1:** SAML / enterprise SSO connections (relevant for future corporate spa/hotel tenants — Auth0 supports it but it's a paid add-on), per-tenant Auth0 organisations, magic-link email login.
+
+**Depends on:** P2-27 (password reset) is a parallel concern — build P2-27 first so email/password accounts have a complete self-service flow before SSO is layered on top.
+
+---
+
 ## Data Import (Migration from existing systems)
 
 ### Milano import page · ✅ Complete
 
 `DataImportPage.tsx` + `POST /admin/import-legacy` endpoint. Accepts Milano's specific export files (Client Details.txt, Future and Past Bookings.txt, Receipt Transactions.txt, All Bookings.txt, On Account Summary.txt) and bulk-inserts clients, appointments, and receipts. Available to admins for re-runs. The structured P2-20–23 specs below (generic CSV/Excel with dry-run and deduplication for future migrations) remain open if ever needed.
+
+---
+
+### P2-MERGE · Duplicate merge — allow staff to choose the non-recommended card
+
+When merging duplicate clients, the system recommends one card as the primary (based on appointment count) and highlights it with a "Primary" badge. Staff should be able to explicitly choose either card as the one to keep, not just accept the recommendation.
+
+**Current state:**
+- A "Swap primary" icon button exists on the pair card, but the "Primary" badge is tied to `recommended_primary_id` from the server — it does not update when staff swap. So after swapping, the card being kept has no badge, and the card being discarded still shows "Primary". The affordance is an icon with a tooltip title, not a prominent labelled action.
+
+**What needs to change:**
+
+- `ClientCard` should show the "Primary" (keep) badge based on which card is currently selected as primary, not the server's recommendation. The recommendation is a hint, not a lock.
+- The swap control should be replaced (or supplemented) with a clear per-card action: "Keep this record" button on each card, or a radio-style selection. Staff should be able to see at a glance which card will survive and which will be merged in.
+- The recommendation from the server (`recommended_primary_id`) can still be pre-selected as the default, but the badge should track the staff's active choice.
+- No backend change needed — `POST /{primary_id}/merge` already accepts whichever ID is passed as primary.
+
+**Why this matters:** Staff correcting import duplicates often know which record has the right contact info regardless of appointment count. The current UI misleads them into thinking the recommendation is enforced, and the unlabelled swap button is easy to miss.
 
 ---
 
@@ -619,3 +689,27 @@ Client-facing briefing delivered before their appointment: upcoming service remi
 **Schedule:** `event_triggered` — triggered by appointment reminder job.
 
 **Depends on:** P3-1, P2-3 (appointment reminders, already built — extend delivery).
+
+---
+
+### P3-7 · Smart booking — inbound email ingestion
+
+Monitor the tenant's `booking_email` inbox (e.g. `info@salonlyol.ca`) via Resend inbound webhook. Parse plain-language booking requests using a Haiku intent extractor (tool-use, strict JSON schema, ~$0.001/call). Convert to a `StructuredRequest` and run it through the scheduling engine. Store as an `appointment_request` with `source = 'email'`; pre-load the recommendation in the staff review panel. Trigger existing request notification to staff.
+
+**LLM use:** `claude-haiku-4-5-20251001` for intent extraction only. Lenient mode: returns best guess from client history with confidence score when input is ambiguous. Staff sees guess + raw email + confidence indicator.
+
+**Delivery:** `POST /webhooks/email/inbound` (validate Resend signature). Match `from` address to existing client record; leave `client_id` null if unmatched.
+
+**Depends on:** Scheduling engine (built), Resend inbound webhook configured on `booking_email` domain.
+
+---
+
+### P3-8 · Smart booking — LLM explanation rendering (optional)
+
+Replace template-built rationale strings in `explainer.py` with a Haiku call that narrates the recommendation in natural language. The scorer's component breakdown (idle penalty, preference match, packing bonus) is passed as structured context so the model narrates rather than fabricates.
+
+**LLM use:** `claude-haiku-4-5-20251001`, max_tokens ~200, ~$0.0005/call. Only fires when a recommendation is surfaced — not in the scoring hot path.
+
+**Note:** The template explainer already produces usable rationale strings. Only build this if the templated text feels stiff in real use at Salon Lyol. Evaluate after P3-7 is live.
+
+**Depends on:** Scheduling engine (built), P3-7 (inbound email, to validate that rationale quality matters at volume).
