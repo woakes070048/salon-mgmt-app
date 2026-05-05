@@ -714,6 +714,16 @@ Replace template-built rationale strings in `explainer.py` with a Haiku call tha
 
 **Depends on:** Scheduling engine (built), P3-7 (inbound email, to validate that rationale quality matters at volume).
 
+### P2-27b · Self-service password change
+
+Logged-in users can change their own password without going through the forgot-password flow.
+
+**Backend:** `POST /auth/change-password` (requires JWT). Body: `{ current_password, new_password }`. Verify current password with `verify_password` before hashing and saving the new one. Return 400 with a clear message if current password is wrong.
+
+**Frontend:** A "Change password" section at the bottom of the user's own profile area (or Settings → Account if that exists). Three fields: current password, new password, confirm new password. Client-side validation that new + confirm match before submitting.
+
+**Scope:** Only lets a user change their own password. Admin resetting another user's password is already handled in UsersPage.
+
 ### P3-9 · Email bounce handling
 
 When Resend fires an `email.bounced` or `email.complained` webhook event for an outbound email (confirmation, reminder, cancellation), mark the recipient client's email address as invalid so staff are alerted rather than silently losing messages.

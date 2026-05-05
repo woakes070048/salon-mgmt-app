@@ -17,6 +17,7 @@ import {
   updateRequestNotifications,
 } from '@/api/settings'
 import { getEmailConfig, saveEmailConfig, testEmailConfig, getPayrollConfig, savePayrollConfig } from '@/api/admin'
+import { changePassword } from '@/api/auth'
 import {
   listPaymentMethods,
   createPaymentMethod,
@@ -94,7 +95,7 @@ export default function SettingsPage() {
     },
   })
 
-  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll'>('branding')
+  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll' | 'account'>('branding')
 
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
 
@@ -105,6 +106,7 @@ export default function SettingsPage() {
     ...(isAdmin ? [{ id: 'promotions', label: t('settings.tab_promotions') }] : []),
     ...(isAdmin ? [{ id: 'email', label: t('settings.tab_email') }] : []),
     ...(isAdmin ? [{ id: 'payroll', label: t('settings.tab_payroll') }] : []),
+    { id: 'account', label: t('settings.tab_account') },
   ] as const
 
   return (
@@ -375,6 +377,9 @@ export default function SettingsPage() {
 
         {/* Payroll tab — admin only */}
         {tab === 'payroll' && isAdmin && <PayrollSection />}
+
+        {/* Account tab — all users */}
+        {tab === 'account' && <ChangePasswordSection />}
       </div>
     </div>
   )
@@ -1371,6 +1376,93 @@ function PayrollSection() {
         </Button>
         {pSaved && <span className="text-sm text-green-600">{t('settings.status_saved')}</span>}
       </div>
+    </section>
+  )
+}
+
+function ChangePasswordSection() {
+  const { t } = useTranslation()
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: () => changePassword(current, next),
+    onSuccess: () => {
+      setSaved(true)
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+      setError(null)
+      setTimeout(() => setSaved(false), 3000)
+    },
+    onError: (err: Error) => {
+      setError(err.message || 'Something went wrong')
+    },
+  })
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSaved(false)
+    if (next !== confirm) {
+      setError('New passwords do not match')
+      return
+    }
+    if (next.length < 8) {
+      setError('New password must be at least 8 characters')
+      return
+    }
+    mutation.mutate()
+  }
+
+  return (
+    <section className="border rounded-lg p-5 space-y-4 bg-white">
+      <h2 className="text-base font-medium">{t('settings.change_password_section')}</h2>
+      <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
+        <div className="space-y-1.5">
+          <Label htmlFor="cp-current">{t('settings.current_password_label')}</Label>
+          <Input
+            id="cp-current"
+            type="password"
+            value={current}
+            onChange={e => setCurrent(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="cp-new">{t('settings.new_password_label')}</Label>
+          <Input
+            id="cp-new"
+            type="password"
+            value={next}
+            onChange={e => setNext(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="cp-confirm">{t('settings.confirm_password_label')}</Label>
+          <Input
+            id="cp-confirm"
+            type="password"
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? t('common.saving') : t('settings.change_password_button')}
+          </Button>
+          {saved && <span className="text-sm text-green-600">{t('settings.status_saved')}</span>}
+        </div>
+      </form>
     </section>
   )
 }

@@ -52,3 +52,7 @@ export function resetPassword(token: string, password: string): Promise<void> {
 export function updateLanguagePreference(language_preference: string): Promise<MeResponse> {
   return api.patch<MeResponse>('/auth/me', { language_preference })
 }
+
+export function changePassword(current_password: string, new_password: string): Promise<void> {
+  return api.post<void>('/auth/change-password', { current_password, new_password })
+}

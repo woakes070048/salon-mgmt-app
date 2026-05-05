@@ -262,3 +262,20 @@ async def update_me(
         tenant_id=str(current_user.tenant_id),
         language_preference=current_user.language_preference,
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    if not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
