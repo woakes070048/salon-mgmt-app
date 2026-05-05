@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import hash_password
@@ -320,6 +320,8 @@ async def delete_user(
             .where(TimeBlock.created_by_user_id == user.id).values(created_by_user_id=None))
         await db.execute(update(ClientColourNote)
             .where(ClientColourNote.created_by_user_id == user.id).values(created_by_user_id=None))
+
+        await db.execute(delete(LoginLog).where(LoginLog.user_id == user.id))
 
         tokens = (
             await db.execute(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
