@@ -784,7 +784,7 @@ async def import_past_unreceipted_bookings(
                      " service_id, provider_id, sequence, start_time, duration_minutes,"
                      " price, price_is_locked, status, created_at, updated_at)"
                      " VALUES (:id, :tid, :appt_id, :svc_id, :prov_id, :seq, :st, :dur, :price,"
-                     " true, 'confirmed', NOW(), NOW())"),
+                     " true, 'pending', NOW(), NOW())"),
                 {"id": uuid.uuid4(), "tid": tenant_id, "appt_id": appt_id,
                  "svc_id": ri["service_id"], "prov_id": ri["provider_id"],
                  "seq": ri["seq"], "st": ri["start_time"],
