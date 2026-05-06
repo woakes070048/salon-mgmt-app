@@ -1,14 +1,19 @@
+import json as _json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.deps import CurrentUser, StaffUser
+from app.email import email_cfg_from_row, send_email
+from app.email_layout import wrap_branded
 from app.models.appointment import (
     Appointment,
     AppointmentItem,
@@ -20,7 +25,9 @@ from app.models.appointment import (
     AppointmentStatus,
 )
 from app.models.client import Client
+from app.models.email_config import TenantEmailConfig
 from app.models.provider import Provider
+from app.models.scheduling import RecommendationLog
 from app.models.service import Service
 from app.models.tenant import Tenant
 from app.models.user import UserRole
@@ -51,6 +58,7 @@ class RequestItemOut(BaseModel):
     sequence: int
     service_name: str
     preferred_provider_name: str
+    service_id: str | None = None
 
 
 class AppointmentRequestOut(BaseModel):
@@ -100,6 +108,16 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
         if linked_client:
             client_id = str(linked_client.id)
 
+    # Resolve service names → IDs in one query so the frontend can skip name-matching
+    service_names = [i.service_name for i in items]
+    service_id_by_name: dict[str, str] = {}
+    if service_names:
+        svc_rows = (await db.execute(
+            select(Service.id, Service.name)
+            .where(Service.tenant_id == req.tenant_id, Service.name.in_(service_names))
+        )).all()
+        service_id_by_name = {r.name: str(r.id) for r in svc_rows}
+
     return AppointmentRequestOut(
         id=str(req.id),
         status=req.status.value,
@@ -119,6 +137,7 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
                 sequence=i.sequence,
                 service_name=i.service_name,
                 preferred_provider_name=i.preferred_provider_name,
+                service_id=service_id_by_name.get(i.service_name),
             )
             for i in items
         ],
@@ -424,6 +443,197 @@ async def convert_request(
         appointment_id=str(appt.id),
         appointment_date=body.appointment_date,
     )
+
+
+# ── Reply draft / send ────────────────────────────────────────────────────────
+
+
+def _minutes_to_hhmm(minutes: int) -> str:
+    h, m = divmod(minutes, 60)
+    return f"{h:02d}:{m:02d}"
+
+
+def _plain_to_html(text: str) -> str:
+    paragraphs = text.strip().split("\n\n")
+    return "\n".join(
+        f"<p style='margin:0 0 12px 0;'>{para.replace(chr(10), '<br>')}</p>"
+        for para in paragraphs
+    )
+
+
+class DraftReplyIn(BaseModel):
+    chosen_recommendation_index: int
+
+
+class DraftReplyOut(BaseModel):
+    subject: str
+    body: str
+
+
+class SendReplyIn(BaseModel):
+    subject: str
+    body: str
+    chosen_recommendation_index: int | None = None
+
+
+@router.post("/{request_id}/draft-reply", response_model=DraftReplyOut)
+async def draft_reply(
+    request_id: str,
+    body: DraftReplyIn,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DraftReplyOut:
+    tid = current_user.tenant_id
+
+    req = (
+        await db.execute(
+            select(AppointmentRequest).where(
+                AppointmentRequest.id == uuid.UUID(request_id),
+                AppointmentRequest.tenant_id == tid,
+            )
+        )
+    ).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    log_row = (
+        await db.execute(
+            select(RecommendationLog)
+            .where(
+                RecommendationLog.tenant_id == tid,
+                RecommendationLog.request_id == req.id,
+            )
+            .order_by(RecommendationLog.created_at.desc())
+        )
+    ).scalar_one_or_none()
+    if log_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No recommendations found for this request",
+        )
+
+    recs = log_row.recommendations_json.get("recommendations", [])
+    idx = body.chosen_recommendation_index
+    if idx < 0 or idx >= len(recs):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Recommendation index {idx} out of range (have {len(recs)})",
+        )
+
+    chosen = recs[idx]
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tid))).scalar_one()
+
+    appt_date = req.desired_date.strftime("%A, %B %-d, %Y")
+    slot_lines = [
+        f"  • {item['service_name']} — {_minutes_to_hhmm(item['start_minutes'])} to "
+        f"{_minutes_to_hhmm(item['end_minutes'])} with {item['provider_name']} ({item['duration_minutes']} min)"
+        for item in chosen["items"]
+    ]
+    slot_description = f"Date: {appt_date}\nServices:\n" + "\n".join(slot_lines)
+    if chosen.get("requires_consent"):
+        slot_description += "\n(Note: this slot requires stylist schedule adjustment — pending their confirmation)"
+
+    original_message = req.inbound_raw_body or "(request submitted via online form — no original email)"
+
+    system = (
+        f"You are a booking assistant for {tenant.name}, a hair salon. "
+        "Draft a warm, professional reply email to a client about their appointment request. "
+        "Be concise — 3 to 5 short paragraphs. Write in plain text with no markdown formatting. "
+        'Output a JSON object with exactly two string keys: "subject" and "body".'
+    )
+    user_content = (
+        f"Client name: {req.first_name} {req.last_name}\n\n"
+        f"Their original message:\n{original_message}\n\n"
+        f"The slot we are offering:\n{slot_description}\n\n"
+        "Draft a reply proposing this slot and asking the client to reply to confirm. "
+        f"Sign off with {tenant.name}."
+    )
+
+    ai_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await ai_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+    )
+
+    raw = response.content[0].text.strip()
+    try:
+        parsed = _json.loads(raw)
+        draft_subject = str(parsed["subject"])
+        draft_body = str(parsed["body"])
+    except Exception:
+        draft_subject = f"Re: Your appointment request — {tenant.name}"
+        draft_body = raw
+
+    return DraftReplyOut(subject=draft_subject, body=draft_body)
+
+
+@router.post("/{request_id}/send-reply", status_code=status.HTTP_204_NO_CONTENT)
+async def send_reply(
+    request_id: str,
+    body: SendReplyIn,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    tid = current_user.tenant_id
+
+    req = (
+        await db.execute(
+            select(AppointmentRequest).where(
+                AppointmentRequest.id == uuid.UUID(request_id),
+                AppointmentRequest.tenant_id == tid,
+            )
+        )
+    ).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    if not req.email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Request has no client email address",
+        )
+
+    cfg_row = (
+        await db.execute(
+            select(TenantEmailConfig).where(TenantEmailConfig.tenant_id == tid)
+        )
+    ).scalar_one_or_none()
+    if cfg_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Email is not configured — add SMTP or Resend settings in Settings → Email",
+        )
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tid))).scalar_one()
+
+    html = wrap_branded(_plain_to_html(body.body), tenant, subject=body.subject)
+    cfg = email_cfg_from_row(cfg_row)
+
+    await send_email(
+        cfg,
+        to=req.email,
+        subject=body.subject,
+        html=html,
+        reply_to_message_id=req.inbound_message_id,
+    )
+
+    if body.chosen_recommendation_index is not None:
+        log_row = (
+            await db.execute(
+                select(RecommendationLog)
+                .where(
+                    RecommendationLog.tenant_id == tid,
+                    RecommendationLog.request_id == req.id,
+                )
+                .order_by(RecommendationLog.created_at.desc())
+            )
+        ).scalar_one_or_none()
+        if log_row is not None:
+            log_row.chosen_index = body.chosen_recommendation_index
+
+    await db.commit()
 
 
 @router.patch("/{request_id}", response_model=AppointmentRequestOut)

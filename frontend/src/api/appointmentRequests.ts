@@ -5,6 +5,7 @@ export interface RequestItem {
   sequence: number
   service_name: string
   preferred_provider_name: string
+  service_id: string | null
 }
 
 export interface AppointmentRequest {

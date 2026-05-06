@@ -91,10 +91,16 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
     setDuplicates([])
     setBypassDuplicateCheck(false)
     setItems(request.items.map((ri, idx) => {
-      const reqName = (ri.service_name ?? '').toLowerCase()
+      // Use server-resolved service_id first; fall back to name-match against catalog
+      const resolvedSvcId = ri.service_id ?? ''
+      const svcFromCatalog = resolvedSvcId
+        ? services.find(s => s.id === resolvedSvcId)
+        : (() => {
+            const reqName = (ri.service_name ?? '').toLowerCase()
+            return services.find(s => s.name.toLowerCase() === reqName)
+              ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase()))
+          })()
       const reqProv = (ri.preferred_provider_name ?? '').toLowerCase()
-      const matchSvc = services.find(s => s.name.toLowerCase() === reqName)
-        ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase()))
       const matchProv = reqProv
         ? (providers.find(p => p.display_name.toLowerCase() === reqProv)
             ?? providers.find(p => p.display_name.toLowerCase().includes(reqProv)))
@@ -104,11 +110,11 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
       const m = offsetMinutes % 60
       return {
         requestItemId: ri.id,
-        serviceId: matchSvc?.id ?? '',
+        serviceId: resolvedSvcId || svcFromCatalog?.id || '',
         providerId: matchProv?.id ?? '',
         startTime: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-        durationMinutes: matchSvc?.duration_minutes ?? 60,
-        price: matchSvc?.default_price != null ? String(matchSvc.default_price) : '',
+        durationMinutes: svcFromCatalog?.duration_minutes ?? 60,
+        price: svcFromCatalog?.default_price != null ? String(svcFromCatalog.default_price) : '',
         notes: '',
       }
     }))
@@ -127,11 +133,15 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
       let changed = false
       const next = prev.map((item, idx) => {
         if (item.serviceId) return item  // respect manual selection
-        const reqName = (request.items[idx]?.service_name ?? '').toLowerCase()
-        const reqProv = (request.items[idx]?.preferred_provider_name ?? '').toLowerCase()
+        const ri = request.items[idx]
+        const resolvedSvcId = ri?.service_id ?? ''
+        const reqName = (ri?.service_name ?? '').toLowerCase()
+        const reqProv = (ri?.preferred_provider_name ?? '').toLowerCase()
 
-        const matchSvc = services.find(s => s.name.toLowerCase() === reqName)
-          ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase()))
+        const matchSvc = resolvedSvcId
+          ? services.find(s => s.id === resolvedSvcId)
+          : (services.find(s => s.name.toLowerCase() === reqName)
+              ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase())))
         if (!matchSvc) return item
 
         const matchProv = reqProv
@@ -142,7 +152,7 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
         changed = true
         return {
           ...item,
-          serviceId: matchSvc.id,
+          serviceId: resolvedSvcId || matchSvc.id,
           durationMinutes: matchSvc.duration_minutes ?? item.durationMinutes,
           price: matchSvc.default_price != null ? String(matchSvc.default_price) : item.price,
           providerId: matchProv ? matchProv.id : item.providerId,
