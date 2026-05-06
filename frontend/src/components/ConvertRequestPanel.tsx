@@ -91,16 +91,24 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
     setDuplicates([])
     setBypassDuplicateCheck(false)
     setItems(request.items.map((ri, idx) => {
+      const reqName = (ri.service_name ?? '').toLowerCase()
+      const reqProv = (ri.preferred_provider_name ?? '').toLowerCase()
+      const matchSvc = services.find(s => s.name.toLowerCase() === reqName)
+        ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase()))
+      const matchProv = reqProv
+        ? (providers.find(p => p.display_name.toLowerCase() === reqProv)
+            ?? providers.find(p => p.display_name.toLowerCase().includes(reqProv)))
+        : undefined
       const offsetMinutes = idx * 60
       const h = Math.floor(offsetMinutes / 60) + 9
       const m = offsetMinutes % 60
       return {
         requestItemId: ri.id,
-        serviceId: '',
-        providerId: '',
+        serviceId: matchSvc?.id ?? '',
+        providerId: matchProv?.id ?? '',
         startTime: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-        durationMinutes: 60,
-        price: '',
+        durationMinutes: matchSvc?.duration_minutes ?? 60,
+        price: matchSvc?.default_price != null ? String(matchSvc.default_price) : '',
         notes: '',
       }
     }))
