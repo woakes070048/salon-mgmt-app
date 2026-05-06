@@ -154,8 +154,17 @@ export default function ReportsPage() {
               )}
               <Row label={t('reports.total_retail')} value={fmt(report.retail_total)} />
               <Row label={t('reports.before_tax')} value={fmt(report.subtotal)} bold />
-              <Row label={t('reports.gst')} value={fmt(report.gst_amount)} />
-              <Row label={t('reports.pst')} value={fmt(report.pst_amount)} />
+              <Row label={t('reports.gst')} value={fmt(report.gst_amount)} indent />
+              <Row label={t('reports.pst')} value={fmt(report.pst_amount)} indent />
+              {parseFloat(report.gift_card_total) !== 0 && (
+                <Row label="Gift cards" value={fmt(report.gift_card_total)} />
+              )}
+              {parseFloat(report.on_account_sales) !== 0 && (
+                <Row label="Less on account sales" value={fmt(report.on_account_sales)} negative />
+              )}
+              {parseFloat(report.on_account_payments) !== 0 && (
+                <Row label="Plus on account payments" value={fmt(report.on_account_payments)} />
+              )}
               <Row label={t('reports.grand_total')} value={fmt(report.total)} bold />
             </Section>
 
@@ -177,24 +186,39 @@ export default function ReportsPage() {
             {report.by_payment_method.length > 0 && (
               <Section title={t('reports.payment_section')}>
                 {report.by_payment_method.map(r => {
+                  const net = parseFloat(r.net)
                   const hasCashback = parseFloat(r.cashback) > 0
+                  const isCash = r.label.toLowerCase().includes('cash')
                   return (
-                    <div key={r.label} className="flex justify-between items-baseline px-4 py-2 border-b last:border-0 text-sm">
+                    <div key={r.label} className="flex justify-between items-baseline px-4 py-2 border-b text-sm">
                       <span className="text-muted-foreground">{r.label}</span>
-                      <span className="tabular-nums text-right">
-                        ${fmt(r.gross)}
+                      <span className={`tabular-nums text-right ${isCash && net < 0 ? 'text-destructive' : ''}`}>
+                        {net < 0 ? '−' : ''}${fmt(Math.abs(net))}
                         {hasCashback && (
                           <span className="ml-2 text-xs text-muted-foreground">
-                            −${fmt(r.cashback)} cashback · net ${fmt(r.net)}
+                            −${fmt(r.cashback)} cashback
                           </span>
                         )}
                       </span>
                     </div>
                   )
                 })}
-                {parseFloat(report.petty_cash_total) > 0 && (
-                  <Row label="Plus petty cash" value={fmt(report.petty_cash_total)} />
-                )}
+                {(() => {
+                  const paymentSubtotal = report.by_payment_method.reduce(
+                    (sum, r) => sum + parseFloat(r.net), 0
+                  )
+                  const petty = parseFloat(report.petty_cash_total)
+                  const grandTotal = parseFloat(report.total)
+                  return (
+                    <>
+                      <Row label="Sub total" value={fmt(paymentSubtotal)} bold />
+                      {petty > 0 && (
+                        <Row label="Plus petty cash" value={fmt(petty)} />
+                      )}
+                      <Row label={t('reports.grand_total')} value={fmt(petty > 0 ? paymentSubtotal + petty : grandTotal)} bold />
+                    </>
+                  )
+                })()}
               </Section>
             )}
 

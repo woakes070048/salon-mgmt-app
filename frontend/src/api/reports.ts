@@ -34,6 +34,9 @@ export interface MonthlyReport {
   retail_gross: string
   retail_discount: string
   retail_total: string
+  gift_card_total: string
+  on_account_sales: string
+  on_account_payments: string
   petty_cash_total: string
   by_provider: ProviderRow[]
   by_payment_method: PaymentMethodRow[]

@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -59,6 +59,9 @@ class MonthlyReport(BaseModel):
     retail_gross: str
     retail_discount: str
     retail_total: str
+    gift_card_total: str
+    on_account_sales: str
+    on_account_payments: str
     petty_cash_total: str
     by_provider: list[ProviderRow]
     by_payment_method: list[PaymentMethodRow]
@@ -142,6 +145,29 @@ async def monthly_report(
         ).scalar() or 0
     ))
 
+    # ── Gift card sales (retail items whose description mentions gift/g.c.) ────
+    gift_card_total = Decimal(str(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(SaleItem.line_total), 0))
+                .join(Sale, Sale.id == SaleItem.sale_id)
+                .where(
+                    *completed,
+                    or_(
+                        func.lower(SaleItem.description).contains("gift"),
+                        func.lower(SaleItem.description).contains("g/c"),
+                    ),
+                )
+            )
+        ).scalar() or 0
+    ))
+
+    # ── On account: no per-transaction ledger yet — placeholder ───────────────
+    # When a dedicated on-account ledger is built (P3-13 adjacent), replace
+    # these with real queries against that table.
+    on_account_sales = Decimal("0")
+    on_account_payments = Decimal("0")
+
     # ── By provider (service items only) ─────────────────────────────────────
     provider_rows = (
         await db.execute(
@@ -203,6 +229,9 @@ async def monthly_report(
         retail_gross=_d(retail_gross),
         retail_discount=_d(retail_discount),
         retail_total=_d(retail_total),
+        gift_card_total=_d(gift_card_total),
+        on_account_sales=_d(on_account_sales),
+        on_account_payments=_d(on_account_payments),
         petty_cash_total=_d(petty_cash_total),
         by_provider=[
             ProviderRow(provider_name=name, total=_d(amt), sale_count=cnt)
