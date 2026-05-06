@@ -28,7 +28,8 @@ from app.models.client import Client
 from app.models.email_config import TenantEmailConfig
 from app.models.provider import Provider
 from app.models.scheduling import RecommendationLog
-from app.models.service import Service, ServiceTranslation
+from app.models.i18n import ServiceTranslation
+from app.models.service import Service
 from app.models.tenant import Tenant
 from app.models.user import UserRole
 from app.reminder_dispatcher import schedule_reminder
@@ -114,7 +115,6 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
     service_names = [i.service_name for i in items]
     service_id_by_name: dict[str, str] = {}
     if service_names:
-        from sqlalchemy import or_
         svc_rows = (await db.execute(
             select(Service.id, Service.name)
             .where(Service.tenant_id == req.tenant_id, Service.name.in_(service_names))
@@ -124,7 +124,6 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
         # Fill in any names that didn't match via translations
         unresolved = [n for n in service_names if n not in service_id_by_name]
         if unresolved:
-            from sqlalchemy import join as sqljoin
             tr_rows = (await db.execute(
                 select(Service.id, ServiceTranslation.name)
                 .join(ServiceTranslation, ServiceTranslation.service_id == Service.id)
