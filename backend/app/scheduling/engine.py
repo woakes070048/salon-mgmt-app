@@ -170,6 +170,11 @@ async def recommend(
         candidates = service_candidates[depth]
 
         for cand in candidates:
+            # Client can only be in one chair at a time — each service must
+            # start after all previously assigned services have ended.
+            if assigned and cand.start_minutes < max(prev.end_minutes for prev in assigned):
+                continue
+
             # Provider already used for a different service at overlapping time?
             conflict = False
             for prev in assigned:
