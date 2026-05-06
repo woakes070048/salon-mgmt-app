@@ -802,3 +802,21 @@ Salon owners can download their data as CSV or JSON for backup, migration, or ex
 **Why:** Clients who generate their own data should be able to take it with them. Also useful for Freddy to pipe into analysis tools or the Briefing Engine.
 
 **Depends on:** GCS access (already used for branding assets).
+
+---
+
+### P3-13 · Briefing Engine — tenant-facing dispatcher
+
+The `developer` and `claude_code` briefings use a simple Cloud Scheduler → `POST /internal/run-briefing` pattern (one job per briefing, configs in code). This doesn't scale to multi-tenant because adding a new salon would require code changes and new scheduler jobs per tenant.
+
+**What to build:**
+
+- **`tenant_briefing_configs` table** — DB-backed equivalent of `BriefingConfig`. Columns: `id`, `tenant_id`, `briefing_id`, `audience`, `topic_domains` (JSONB), `delivery_channels` (JSONB), `schedule_cron`, `output_format`, `active`, `last_run_at`, `next_run_at`.
+- **Dispatcher endpoint** — `POST /internal/dispatch-briefings`, protected by `X-Internal-Secret`. Queries for all active configs where `next_run_at <= NOW()`, runs each, updates `last_run_at` and `next_run_at`. Same pattern as `POST /internal/dispatch-reminders`.
+- **Single Cloud Scheduler job** — fires every 15 minutes, always, regardless of tenant count. `POST /internal/dispatch-briefings`.
+- **Admin API** — `GET/POST/PATCH/DELETE /admin/briefing-configs` to manage configs per tenant. Seeded with `salon_owner` + `stylist` defaults on tenant creation.
+- **Retire per-briefing jobs** — once this lands, the `developer-market-daily` and `claude-code-market-daily` Cloud Scheduler jobs can be migrated or retired.
+
+**Scope boundary:** `developer` and `claude_code` audiences are Freddy's dev tools, not tenant features — they can stay as manual/scripted or keep their own scheduler jobs indefinitely.
+
+**Depends on:** P3-4 salon_owner audience, P3-5 stylist audience (so there's something worth dispatching at scale).
