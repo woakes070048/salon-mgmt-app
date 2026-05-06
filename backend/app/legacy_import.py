@@ -203,6 +203,28 @@ async def _ensure_house_provider(
     return new_id
 
 
+async def _ensure_walk_in_client(
+    db: AsyncSession, tenant_id: uuid.UUID
+) -> uuid.UUID:
+    """Return a placeholder client for walk-in cash sales, creating it if needed."""
+    row = (await db.execute(
+        text("SELECT id FROM clients WHERE tenant_id = :tid AND legacy_id = 'WALK_IN' LIMIT 1"),
+        {"tid": tenant_id},
+    )).fetchone()
+    if row:
+        return row.id
+    new_id = uuid.uuid4()
+    await db.execute(
+        text(
+            "INSERT INTO clients (id, tenant_id, first_name, last_name, is_active,"
+            " legacy_id, created_at, updated_at)"
+            " VALUES (:id, :tid, 'Walk-In', 'Client', true, 'WALK_IN', NOW(), NOW())"
+        ),
+        {"id": new_id, "tid": tenant_id},
+    )
+    return new_id
+
+
 async def _ensure_unknown_payment_method(
     db: AsyncSession, tenant_id: uuid.UUID
 ) -> uuid.UUID:
@@ -438,6 +460,7 @@ async def import_receipts(
 
     house_id = await _ensure_house_provider(db, tenant_id, provider_map)
     unknown_pm_id = await _ensure_unknown_payment_method(db, tenant_id)
+    walk_in_client_id = await _ensure_walk_in_client(db, tenant_id)
 
     # Build booking time lookup: (client_code, date_str) → earliest Time string
     booking_time: dict[tuple[str, str], str] = {}
@@ -503,9 +526,9 @@ async def import_receipts(
                 text("INSERT INTO sales (id, tenant_id, client_id, subtotal, discount_total,"
                      " gst_amount, pst_amount, total, status, notes, completed_at,"
                      " created_at, updated_at)"
-                     " VALUES (:id, :tid, NULL, :sub, 0, :gst, :pst, :total,"
+                     " VALUES (:id, :tid, :cid, :sub, 0, :gst, :pst, :total,"
                      " 'completed', :note, :cat, NOW(), NOW())"),
-                {"id": sale_id, "tid": tenant_id,
+                {"id": sale_id, "tid": tenant_id, "cid": walk_in_client_id,
                  "sub": Decimal(str(round(subtotal, 2))),
                  "gst": Decimal(str(round(gst_total, 2))),
                  "pst": Decimal(str(round(pst_total, 2))),
