@@ -46,7 +46,7 @@ export default function LandingPage() {
         <img
           src="/salon-lyol-logo.png"
           alt="Salon Lyol"
-          className="h-24 w-auto drop-shadow-md"
+          className="h-48 w-auto drop-shadow-md"
         />
       </header>
 

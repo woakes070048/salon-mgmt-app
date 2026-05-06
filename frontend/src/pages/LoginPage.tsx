@@ -39,10 +39,7 @@ export default function LoginPage() {
           aria-hidden
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" aria-hidden />
-        <div className="relative z-10 h-full flex flex-col justify-between p-10 text-white">
-          <Link to="/" className="inline-block">
-            <img src="/salon-lyol-logo.png" alt="Salon Lyol" className="h-9 w-auto" />
-          </Link>
+        <div className="relative z-10 h-full flex flex-col justify-end p-10 text-white">
           <div className="space-y-4 max-w-sm">
             <p className="text-xs tracking-[0.4em] uppercase text-white/70">
               Salon Lyol · Toronto
@@ -60,9 +57,10 @@ export default function LoginPage() {
       {/* Right: sign-in form */}
       <div className="flex items-center justify-center px-6 py-12 bg-[#faf9f7]">
         <div className="w-full max-w-sm space-y-8">
-          {/* Mobile-only logo */}
-          <div className="flex justify-center lg:hidden">
-            <img src="/salon-lyol-logo.png" alt="Salon Lyol" className="h-12 w-auto" />
+          <div className="flex justify-center">
+            <Link to="/">
+              <img src="/salon-lyol-logo.png" alt="Salon Lyol" className="h-48 w-auto" />
+            </Link>
           </div>
 
           <div className="space-y-2 text-center lg:text-left">
