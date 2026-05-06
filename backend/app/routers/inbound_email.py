@@ -318,6 +318,8 @@ async def receive_inbound_email(
         cancellation_policy_acknowledged=False,
         status=AppointmentRequestStatus.new,
         submitted_at=datetime.now(timezone.utc),
+        inbound_message_id=message_id or None,
+        inbound_raw_body=body_text or None,
     )
     db.add(req)
     await db.flush()  # obtain req.id

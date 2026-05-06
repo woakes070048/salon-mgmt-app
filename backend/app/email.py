@@ -51,7 +51,7 @@ def email_cfg_from_row(row: Any) -> AnyEmailConfig:
     )
 
 
-def _send_sync(cfg: SmtpConfig, to: str, subject: str, html: str) -> None:
+def _send_sync(cfg: SmtpConfig, to: str, subject: str, html: str, reply_to_message_id: str | None = None) -> None:
     if not cfg.host:
         raise RuntimeError("SMTP host is not configured — fill in all fields and click Save first")
     if not cfg.username:
@@ -65,6 +65,10 @@ def _send_sync(cfg: SmtpConfig, to: str, subject: str, html: str) -> None:
     msg["Subject"] = subject
     msg["From"] = cfg.from_address
     msg["To"] = to
+    if reply_to_message_id:
+        mid = reply_to_message_id if reply_to_message_id.startswith("<") else f"<{reply_to_message_id}>"
+        msg["In-Reply-To"] = mid
+        msg["References"] = mid
     msg.attach(MIMEText(html, "html"))
 
     context = ssl.create_default_context()
@@ -91,15 +95,19 @@ def _send_sync(cfg: SmtpConfig, to: str, subject: str, html: str) -> None:
         raise RuntimeError(f"Connection error to {cfg.host}:{cfg.port} — {e}")
 
 
-async def _send_via_resend(cfg: ResendApiConfig, to: str, subject: str, html: str) -> None:
+async def _send_via_resend(cfg: ResendApiConfig, to: str, subject: str, html: str, reply_to_message_id: str | None = None) -> None:
     if not cfg.api_key:
         raise RuntimeError("Resend API key is not configured — enter it in Settings → Email")
     if not cfg.from_address:
         raise RuntimeError("From address is not configured")
+    payload: dict = {"from": cfg.from_address, "to": [to], "subject": subject, "html": html}
+    if reply_to_message_id:
+        mid = reply_to_message_id if reply_to_message_id.startswith("<") else f"<{reply_to_message_id}>"
+        payload["headers"] = {"In-Reply-To": mid, "References": mid}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             "https://api.resend.com/emails",
-            json={"from": cfg.from_address, "to": [to], "subject": subject, "html": html},
+            json=payload,
             headers={"Authorization": f"Bearer {cfg.api_key}"},
         )
     if resp.status_code not in (200, 201):
@@ -110,15 +118,22 @@ async def _send_via_resend(cfg: ResendApiConfig, to: str, subject: str, html: st
         raise RuntimeError(f"Resend API error ({resp.status_code}): {msg}")
 
 
-async def send_email(cfg: AnyEmailConfig, to: str, subject: str, html: str, retries: int = 3) -> None:
+async def send_email(
+    cfg: AnyEmailConfig,
+    to: str,
+    subject: str,
+    html: str,
+    retries: int = 3,
+    reply_to_message_id: str | None = None,
+) -> None:
     if isinstance(cfg, ResendApiConfig):
-        await _send_via_resend(cfg, to, subject, html)
+        await _send_via_resend(cfg, to, subject, html, reply_to_message_id=reply_to_message_id)
         return
     # SMTP path — retry on transient connection drops
     last_err: Exception | None = None
     for attempt in range(retries):
         try:
-            await asyncio.to_thread(_send_sync, cfg, to, subject, html)
+            await asyncio.to_thread(_send_sync, cfg, to, subject, html, reply_to_message_id)
             return
         except RuntimeError as e:
             last_err = e

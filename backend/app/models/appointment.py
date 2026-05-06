@@ -96,6 +96,8 @@ class AppointmentRequest(TenantScopedBase):
         Enum(AppointmentRequestStatus), nullable=False, default=AppointmentRequestStatus.new
     )
     staff_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inbound_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inbound_raw_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
