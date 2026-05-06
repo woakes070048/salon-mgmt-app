@@ -41,12 +41,9 @@ jobs:
 
       # ── API image ──────────────────────────────────────────────────────────
       - name: Build API image
-        env:
-          DOCKER_BUILDKIT: "1"
         run: |
           docker build \
             --cache-from ${{ env.REGISTRY }}/salon-api:latest \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
             -f backend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-api:latest \
@@ -59,12 +56,9 @@ jobs:
 
       # ── Frontend image ─────────────────────────────────────────────────────
       - name: Build frontend image
-        env:
-          DOCKER_BUILDKIT: "1"
         run: |
           docker build \
             --cache-from ${{ env.REGISTRY }}/salon-frontend:latest \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
             --build-arg VITE_API_URL=${{ vars.API_URL }} \
             -f frontend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
