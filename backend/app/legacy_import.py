@@ -140,11 +140,21 @@ def _parse_name(full: str) -> tuple[str, str]:
 
 
 def _parse_dt(date_str: str, time_str: str) -> datetime:
-    return datetime.strptime(f"{date_str} {time_str}", "%m/%d/%Y %I:%M:%S %p")
+    for fmt in ("%m/%d/%Y %I:%M:%S %p", "%Y-%m-%d %I:%M:%S %p"):
+        try:
+            return datetime.strptime(f"{date_str} {time_str}", fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Cannot parse datetime: {date_str!r} {time_str!r}")
 
 
 def _parse_date_noon(date_str: str) -> datetime:
-    return datetime.strptime(date_str, "%m/%d/%Y").replace(hour=12)
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str, fmt).replace(hour=12)
+        except ValueError:
+            continue
+    raise ValueError(f"Cannot parse date: {date_str!r}")
 
 
 # ---------------------------------------------------------------------------
