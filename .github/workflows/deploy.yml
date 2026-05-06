@@ -14,7 +14,6 @@ env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GCP_REGION: ${{ vars.GCP_REGION }}
   REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/salon-mgmt
-  DOCKER_BUILDKIT: "1"
 
 jobs:
   deploy:
@@ -76,8 +75,6 @@ jobs:
         if: steps.changes.outputs.api == 'true'
         run: |
           docker build \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from ${{ env.REGISTRY }}/salon-api:latest \
             -f backend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-api:latest \
@@ -97,9 +94,7 @@ jobs:
         if: steps.changes.outputs.frontend == 'true'
         run: |
           docker build \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
             --build-arg VITE_API_URL=${{ vars.API_URL }} \
-            --cache-from ${{ env.REGISTRY }}/salon-frontend:latest \
             -f frontend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-frontend:latest \
