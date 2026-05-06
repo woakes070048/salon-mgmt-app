@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDateLocale } from '@/lib/dateLocale'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { listAppointments, type Appointment, type AppointmentItem } from '@/api/appointments'
 import { listProviders, type Provider } from '@/api/providers'
 import { getSchedule } from '@/api/schedules'
 import { getRequest } from '@/api/appointmentRequests'
+import { type Recommendation } from '@/api/scheduling'
 import { getBranding, type SlotMinutes } from '@/api/settings'
 import { listTimeBlocks, type TimeBlock } from '@/api/timeBlocks'
 import TimeGrid from '@/components/appointment-book/TimeGrid'
@@ -86,6 +87,12 @@ export default function AppointmentBookPage() {
   const { locale } = useDateLocale()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Capture recommendation from navigation state immediately — before setSearchParams
+  // replaces the history entry and drops the state.
+  const [pendingRec] = useState<Recommendation | undefined>(
+    () => (location.state as { recommendation?: Recommendation } | null)?.recommendation
+  )
   const requestId = searchParams.get('request')
   const highlightApptId = searchParams.get('appointment')
 
@@ -386,6 +393,7 @@ export default function AppointmentBookPage() {
           request={convertRequest}
           date={date}
           onDateChange={setDate}
+          initialRecommendation={pendingRec}
           onClose={() => navigate('/appointments')}
           onConverted={apptDate => {
             setDate(apptDate)
