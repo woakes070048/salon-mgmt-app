@@ -111,6 +111,52 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
     searchTimer.current = setTimeout(() => setDebouncedQuery(clientQuery), 250)
   }, [clientQuery])
 
+  // Auto-match request service/provider names to catalog IDs so recommendations
+  // appear without staff having to manually pick from dropdowns first.
+  useEffect(() => {
+    if (services.length === 0) return
+    setItems(prev => {
+      let changed = false
+      const next = prev.map((item, idx) => {
+        if (item.serviceId) return item  // respect manual selection
+        const reqName = (request.items[idx]?.service_name ?? '').toLowerCase()
+        const reqProv = (request.items[idx]?.preferred_provider_name ?? '').toLowerCase()
+
+        const matchSvc = services.find(s => s.name.toLowerCase() === reqName)
+          ?? services.find(s => s.name.toLowerCase().includes(reqName) || reqName.includes(s.name.toLowerCase()))
+        if (!matchSvc) return item
+
+        const matchProv = reqProv
+          ? (providers.find(p => p.display_name.toLowerCase() === reqProv)
+              ?? providers.find(p => p.display_name.toLowerCase().includes(reqProv)))
+          : undefined
+
+        changed = true
+        return {
+          ...item,
+          serviceId: matchSvc.id,
+          durationMinutes: matchSvc.duration_minutes ?? item.durationMinutes,
+          price: matchSvc.default_price != null ? String(matchSvc.default_price) : item.price,
+          providerId: matchProv ? matchProv.id : item.providerId,
+        }
+      })
+
+      if (!changed) return prev
+
+      // Cascade start times from matched durations
+      for (let i = 0; i < next.length - 1; i++) {
+        const [h, m] = next[i].startTime.split(':').map(Number)
+        const endMins = h * 60 + m + next[i].durationMinutes
+        next[i + 1] = {
+          ...next[i + 1],
+          startTime: `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`,
+        }
+      }
+
+      return next
+    })
+  }, [services, providers, request.id])
+
   function updateItem(idx: number, patch: Partial<ItemFormState>) {
     setItems(prev => {
       const next = prev.map((it, i) => i === idx ? { ...it, ...patch } : it)
