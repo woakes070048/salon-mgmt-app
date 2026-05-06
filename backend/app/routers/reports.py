@@ -154,8 +154,9 @@ async def monthly_report(
                 .where(
                     *completed,
                     or_(
-                        func.lower(SaleItem.description).contains("gift"),
-                        func.lower(SaleItem.description).contains("g/c"),
+                        func.lower(SaleItem.description).contains("gift card"),
+                        func.lower(SaleItem.description).contains("gift certificate"),
+                        func.lower(SaleItem.description).contains("gift card/certificate"),
                     ),
                 )
             )
