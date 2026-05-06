@@ -387,6 +387,12 @@ export default function ConvertRequestPanel({ request, date, onDateChange, initi
               preferredProviderId: it.providerId || undefined,
             })).filter(s => s.serviceId)}
             desiredDate={date}
+            earliestStart={(() => {
+              const today = new Date().toISOString().slice(0, 10)
+              if (date !== today) return undefined
+              const now = new Date()
+              return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+            })()}
             onSelect={applyRecommendation}
           />
         )}

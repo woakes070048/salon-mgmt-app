@@ -65,6 +65,12 @@ function ReviewDialog({
     .filter(i => i.service_id)
     .map(i => ({ serviceId: i.service_id! })) ?? []
 
+  const today = new Date().toISOString().slice(0, 10)
+  const nowDate = new Date()
+  const earliestStart = request?.desired_date === today
+    ? `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`
+    : undefined
+
   async function handleSave() {
     if (!request) return
     setSaving(true)
@@ -114,6 +120,7 @@ function ReviewDialog({
                 tenantId={user.tenant_id}
                 services={recommendServices}
                 desiredDate={request.desired_date}
+                earliestStart={earliestStart}
                 onSelect={(rec) => { onClose(); onConvert(rec) }}
               />
             )}
