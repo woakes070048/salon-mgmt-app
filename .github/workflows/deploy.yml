@@ -5,8 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Cancel any in-progress run for the same branch when a new push arrives.
-# Only the latest commit needs to deploy.
+# Cancel any in-progress run when a new push arrives — only the latest commit deploys.
 concurrency:
   group: deploy-staging
   cancel-in-progress: true
@@ -17,15 +16,13 @@ env:
   REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/salon-mgmt
 
 jobs:
-  # ── Build and push both images in parallel ──────────────────────────────────
-  build-api:
-    name: Build API image
+  deploy:
+    name: Build and deploy
     runs-on: self-hosted
     permissions:
       contents: read
       id-token: write
-    outputs:
-      image: ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +39,8 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build and push API image
+      # ── API image ──────────────────────────────────────────────────────────
+      - name: Build API image
         env:
           DOCKER_BUILDKIT: "1"
         run: |
@@ -53,34 +51,14 @@ jobs:
             -t ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-api:latest \
             .
+
+      - name: Push API image
+        run: |
           docker push ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/salon-api:latest
 
-  build-frontend:
-    name: Build frontend image
-    runs-on: self-hosted
-    permissions:
-      contents: read
-      id-token: write
-    outputs:
-      image: ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: auth
-        name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build and push frontend image
+      # ── Frontend image ─────────────────────────────────────────────────────
+      - name: Build frontend image
         env:
           DOCKER_BUILDKIT: "1"
         run: |
@@ -92,28 +70,13 @@ jobs:
             -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-frontend:latest \
             ./frontend
+
+      - name: Push frontend image
+        run: |
           docker push ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/salon-frontend:latest
 
-  # ── Deploy both services (runs after both builds succeed) ───────────────────
-  deploy:
-    name: Deploy to Cloud Run
-    runs-on: self-hosted
-    needs: [build-api, build-frontend]
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - id: auth
-        name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-
+      # ── Deploy ─────────────────────────────────────────────────────────────
       - name: Deploy API to Cloud Run
         env:
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
