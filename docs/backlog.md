@@ -747,19 +747,126 @@ When Resend fires an `email.bounced` or `email.complained` webhook event for an 
 
 ## Phase 3 — Platform & Integrations
 
-### P3-10 · Inbound email inbox
+### P3-10 · Booking inbox — AI-assisted email triage and reply
 
-Staff should be able to read all emails received at info@salonlyol.ca (or the tenant's inbound address) directly within the app, not just see the booking intents extracted from them.
+`info@salonlyol.ca` is the salon's general address. Clients email it for booking requests but also for general questions, product inquiries, and other issues. Staff currently monitor Gmail separately — this eliminates that swivel chair by bringing all inbound email into SalonOS with AI context on every message.
 
-**What to build:**
+#### The current bug this also fixes
 
-- Backend: `GET /inbound-emails` — paginated list (50/page) of stored inbound messages, ordered newest-first. Fields: id, from_address, subject, received_at, body_text, body_html (nullable), processed (bool — whether booking intent was extracted), request_id (nullable — if a booking request was created from this email).
-- Backend: `GET /inbound-emails/{id}` — single message with full body.
-- Frontend: **Inbox page** (admin/staff) at `/inbox` — list view with from, subject, date, and a "Booking created" badge when `request_id` is set. Click → slide-over with full message body (render HTML if available, fallback to text). Mark-as-read state optional (low priority).
-- Nav: add "Inbox" link (admin/staff, envelope icon) to AppShell.
-- Store emails in an `inbound_emails` table (migration). The existing webhook already parses the payload — it should also persist the raw message before doing anything else.
+The P3-7 webhook stores every inbound email as an `AppointmentRequest`, even "thanks for the great cut!" messages. Non-booking emails should not create appointment requests. This item fixes that by making appointment request creation conditional on intent classification.
 
-**Depends on:** P3-7 inbound email webhook (built).
+---
+
+#### Data model
+
+New table: **`inbound_emails`**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id` | UUID FK | |
+| `message_id` | TEXT | RFC 2822 Message-ID (for threading) |
+| `from_address` | TEXT | |
+| `from_name` | TEXT nullable | Display name if present |
+| `subject` | TEXT | |
+| `body_text` | TEXT | Plain text body |
+| `body_html` | TEXT nullable | HTML body if present |
+| `received_at` | TIMESTAMPTZ | |
+| `client_id` | UUID nullable FK | Matched client if found |
+| `intent` | TEXT | `booking_request` \| `general_inquiry` \| `supplier` \| `unclassified` |
+| `intent_confidence` | FLOAT | 0–1 |
+| `request_id` | UUID nullable FK | Set if a booking AppointmentRequest was created |
+| `reply_sent_at` | TIMESTAMPTZ nullable | When staff sent a reply |
+| `is_read` | BOOL | Default false |
+
+The existing `AppointmentRequest.inbound_message_id` and `inbound_raw_body` columns (already in schema) link back to the source email.
+
+---
+
+#### Webhook changes
+
+Refactor `POST /webhooks/email/inbound`:
+
+1. **Always** persist the raw email as an `InboundEmail` row first — before any classification.
+2. Run the Haiku intent classifier. It now returns one of four intents: `booking_request`, `general_inquiry`, `supplier`, `unclassified`.
+3. **Only if `booking_request`**: run the existing scheduling engine and create an `AppointmentRequest`. Link via `InboundEmail.request_id`.
+4. Send staff notification regardless of intent (so staff sees all emails in the app).
+
+**LLM classification prompt** (single Haiku call, <$0.001):
+```
+Classify this email to a hair salon. Return JSON:
+{"intent": "booking_request"|"general_inquiry"|"supplier"|"unclassified", "confidence": 0.0–1.0}
+booking_request: client wants to book, reschedule, or cancel an appointment.
+general_inquiry: question about services, prices, hours, products, etc.
+supplier: vendor, product rep, or business solicitation.
+unclassified: anything else.
+Email subject: {subject}
+Email body: {body[:500]}
+```
+
+---
+
+#### Backend endpoints
+
+- `GET /inbound-emails` — paginated list (50/page), ordered newest-first. Query params: `intent`, `is_read`, `client_id`. Returns: id, from_address, from_name, subject, received_at, intent, intent_confidence, request_id, is_read, client_id.
+- `GET /inbound-emails/{id}` — full record including body_text and body_html.
+- `PATCH /inbound-emails/{id}` — mark read (`is_read: true`).
+- `POST /inbound-emails/{id}/reply` — send a reply from the salon's address. Body: `{ body_html, body_text }`. Sets `In-Reply-To` and `References` from `message_id`. Records `reply_sent_at`.
+- `POST /inbound-emails/{id}/ai-reply` — generate a draft reply using Sonnet. Returns `{ subject, body_html, body_text }` — not sent automatically, staff edits and approves via the reply endpoint.
+
+**AI reply prompt (Sonnet, ~$0.003/call):**
+```
+You are drafting a reply on behalf of {salon_name} to a client email.
+
+Client: {client_name or "a client"} ({from_address})
+{if client_id: "Client history: {last_3_visits}, {formula_notes}"}
+{if intent == booking_request and recommendations: "Available slots: {top_2_recommendations}"}
+
+Original email:
+Subject: {subject}
+{body_text[:1000]}
+
+Write a warm, professional reply. If it's a booking request and slots are available,
+offer the top option and ask the client to confirm. If it's a question, answer it
+concisely using the salon's known details. Do not confirm bookings — offer options only.
+Salon info: {address}, {phone}, {hours_summary}.
+```
+
+---
+
+#### Frontend: Inbox page (`/inbox`)
+
+**List view** — envelope icon in AppShell nav, badge with unread count.
+
+Each row: sender name/email, subject, received time, intent badge (`Booking request` / `General inquiry` / `Supplier` / `Unclassified`), unread dot.
+
+**Detail slide-over** — opens on click:
+- Full email (prefer HTML render in sandboxed iframe, fallback to text)
+- If `intent == booking_request` and `request_id` set: link to the appointment request ("View booking request →")
+- If `intent == booking_request` and no `request_id`: "Classify as booking" button (manual override)
+- Client card snippet if matched (name, last visit, upcoming appointments)
+- **Reply section** at bottom:
+  - "Generate AI reply" button → calls `/ai-reply`, loads draft into editor
+  - Rich text editor (Tiptap, same as confirmation email editor already in the app)
+  - Send button → calls `/reply`, marks read, shows confirmation
+
+**Unread badge** in AppShell nav — same pattern as the existing new-requests badge.
+
+---
+
+#### Phasing
+
+Build in this order:
+1. `inbound_emails` table + migration
+2. Webhook refactor (persist all, classify intent, conditional request creation)
+3. Backend list/detail/read endpoints
+4. Inbox page — list view + detail slide-over (read-only)
+5. AI reply generation + reply send endpoint
+6. Reply UI in slide-over
+
+Steps 1–4 can ship as a unit; 5–6 are additive.
+
+**Depends on:** P3-7 webhook (built), `send_email` with `reply_to_message_id` (built), Resend outbound configured (live).
 
 ---
 
