@@ -28,7 +28,7 @@ from app.models.client import Client
 from app.models.email_config import TenantEmailConfig
 from app.models.provider import Provider
 from app.models.scheduling import RecommendationLog
-from app.models.service import Service
+from app.models.service import Service, ServiceTranslation
 from app.models.tenant import Tenant
 from app.models.user import UserRole
 from app.reminder_dispatcher import schedule_reminder
@@ -108,15 +108,30 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
         if linked_client:
             client_id = str(linked_client.id)
 
-    # Resolve service names → IDs in one query so the frontend can skip name-matching
+    # Resolve service names → IDs. Match against both the canonical English name and
+    # any stored translations, since the booking form sends whatever the user saw
+    # (which may be a translated name if they use the French UI).
     service_names = [i.service_name for i in items]
     service_id_by_name: dict[str, str] = {}
     if service_names:
+        from sqlalchemy import or_
         svc_rows = (await db.execute(
             select(Service.id, Service.name)
             .where(Service.tenant_id == req.tenant_id, Service.name.in_(service_names))
         )).all()
         service_id_by_name = {r.name: str(r.id) for r in svc_rows}
+
+        # Fill in any names that didn't match via translations
+        unresolved = [n for n in service_names if n not in service_id_by_name]
+        if unresolved:
+            from sqlalchemy import join as sqljoin
+            tr_rows = (await db.execute(
+                select(Service.id, ServiceTranslation.name)
+                .join(ServiceTranslation, ServiceTranslation.service_id == Service.id)
+                .where(Service.tenant_id == req.tenant_id, ServiceTranslation.name.in_(unresolved))
+            )).all()
+            for r in tr_rows:
+                service_id_by_name[r.name] = str(r.id)
 
     return AppointmentRequestOut(
         id=str(req.id),
