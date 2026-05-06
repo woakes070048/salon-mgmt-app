@@ -88,9 +88,9 @@ jobs:
       - name: Retag existing API image (no backend changes)
         if: steps.changes.outputs.api == 'false'
         run: |
-          docker pull ${{ env.REGISTRY }}/salon-api:latest
-          docker tag  ${{ env.REGISTRY }}/salon-api:latest ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+          gcloud artifacts docker tags add \
+            ${{ env.REGISTRY }}/salon-api:latest \
+            ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
 
       # ── Frontend image ─────────────────────────────────────────────────────
       - name: Build and push frontend image
@@ -110,9 +110,9 @@ jobs:
       - name: Retag existing frontend image (no frontend changes)
         if: steps.changes.outputs.frontend == 'false'
         run: |
-          docker pull ${{ env.REGISTRY }}/salon-frontend:latest
-          docker tag  ${{ env.REGISTRY }}/salon-frontend:latest ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
+          gcloud artifacts docker tags add \
+            ${{ env.REGISTRY }}/salon-frontend:latest \
+            ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
 
       # ── Deploy ─────────────────────────────────────────────────────────────
       - name: Deploy API to Cloud Run
