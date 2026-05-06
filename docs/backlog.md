@@ -742,3 +742,63 @@ When Resend fires an `email.bounced` or `email.complained` webhook event for an 
 **Migration:** add `email_status VARCHAR(20) NOT NULL DEFAULT 'valid'` to `clients`.
 
 **Depends on:** P3-7 webhook infrastructure (shared signature validation, same endpoint pattern).
+
+---
+
+## Phase 3 — Platform & Integrations
+
+### P3-10 · Inbound email inbox
+
+Staff should be able to read all emails received at info@salonlyol.ca (or the tenant's inbound address) directly within the app, not just see the booking intents extracted from them.
+
+**What to build:**
+
+- Backend: `GET /inbound-emails` — paginated list (50/page) of stored inbound messages, ordered newest-first. Fields: id, from_address, subject, received_at, body_text, body_html (nullable), processed (bool — whether booking intent was extracted), request_id (nullable — if a booking request was created from this email).
+- Backend: `GET /inbound-emails/{id}` — single message with full body.
+- Frontend: **Inbox page** (admin/staff) at `/inbox` — list view with from, subject, date, and a "Booking created" badge when `request_id` is set. Click → slide-over with full message body (render HTML if available, fallback to text). Mark-as-read state optional (low priority).
+- Nav: add "Inbox" link (admin/staff, envelope icon) to AppShell.
+- Store emails in an `inbound_emails` table (migration). The existing webhook already parses the payload — it should also persist the raw message before doing anything else.
+
+**Depends on:** P3-7 inbound email webhook (built).
+
+---
+
+### P3-11 · Public REST API (tenant-scoped)
+
+Tenants can access their own data via a documented REST API so they can integrate SalonOS with other software, AI tools, or export pipelines without logging into the UI.
+
+**Scope:**
+
+- API key management: `POST /api-keys` (create), `GET /api-keys` (list), `DELETE /api-keys/{id}` (revoke). Keys are tenant-scoped, hashed on storage (same pattern as password reset tokens). Shown once on creation.
+- Auth: `Authorization: Bearer <api_key>` header. A new `api_key_auth` FastAPI dependency resolves the tenant from the key.
+- Read-only endpoints (Phase 1 of the API):
+  - `GET /api/v1/clients` — paginated, filterable by name/email
+  - `GET /api/v1/appointments` — paginated, filterable by date range and provider
+  - `GET /api/v1/sales` — paginated, filterable by date range
+  - `GET /api/v1/providers` — list of active providers
+  - `GET /api/v1/services` — list of active services
+- OpenAPI spec auto-generated (FastAPI default). Add a public docs page at `/api/docs`.
+- Rate limiting: 1000 req/hour per key (use a simple Redis counter or a header-based honour system for MVP).
+
+**Why:** Enables Freddy to pipe data to Claude, spreadsheets, or other tools without screen-scraping. Positions SalonOS as an open platform for future integrations (booking widgets, loyalty apps, AI agents).
+
+**Phase 2 of the API** (separate backlog item): write endpoints (create appointment, update client, record sale), webhooks (appointment created/updated/completed, sale completed).
+
+---
+
+### P3-12 · Data export
+
+Salon owners can download their data as CSV or JSON for backup, migration, or external analysis.
+
+**What to build:**
+
+- `POST /export/request` — queues an export job (background task). Body: `{ format: "csv"|"json", datasets: ["clients", "appointments", "sales", "retail"] }`. Returns a job ID.
+- `GET /export/{job_id}` — poll status (`pending` | `ready` | `expired`). When ready, returns a signed download URL (GCS signed URL, valid 1 hour).
+- Background task: runs the export, writes to GCS, marks job ready.
+- Frontend: **Export** section in Settings → Data (new tab). Checkbox list of datasets, format toggle, "Request export" button, download link when ready.
+- Exports include all tenant-scoped data only. No cross-tenant leakage.
+- Files expire after 24 hours.
+
+**Why:** Clients who generate their own data should be able to take it with them. Also useful for Freddy to pipe into analysis tools or the Briefing Engine.
+
+**Depends on:** GCS access (already used for branding assets).
