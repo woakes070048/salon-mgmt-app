@@ -57,6 +57,12 @@ export default function LoginPage() {
       {/* Right: sign-in form */}
       <div className="flex items-center justify-center px-6 py-12 bg-[#faf9f7]">
         <div className="w-full max-w-sm space-y-8">
+          <div className="flex justify-center">
+            <Link to="/">
+              <img src="/salon-lyol-logo.png" alt="Salon Lyol" className="h-24 w-auto" />
+            </Link>
+          </div>
+
           <div className="space-y-2 text-center lg:text-left">
             <p className="text-xs tracking-[0.3em] uppercase text-muted-foreground">
               {t('auth.welcome_back')}

@@ -9,6 +9,7 @@ import {
   reviewRequest,
 } from '@/api/appointmentRequests'
 import { useAuth } from '@/store/auth'
+import { type Recommendation } from '@/api/scheduling'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,7 +51,7 @@ function ReviewDialog({
   request: AppointmentRequest | null
   onClose: () => void
   onSave: (id: string, status: AppointmentRequest['status'], notes: string) => Promise<void>
-  onConvert: () => void
+  onConvert: (rec?: Recommendation) => void
 }) {
   const { t } = useTranslation()
   const { bcp47 } = useDateLocale()
@@ -113,7 +114,7 @@ function ReviewDialog({
                 tenantId={user.tenant_id}
                 services={recommendServices}
                 desiredDate={request.desired_date}
-                onSelect={() => { onClose(); onConvert() }}
+                onSelect={(rec) => { onClose(); onConvert(rec) }}
               />
             )}
 
@@ -189,9 +190,9 @@ export default function RequestsPage() {
     { value: 'declined', label: t('requests.filter_declined') },
   ]
 
-  function openConvert(req: AppointmentRequest) {
+  function openConvert(req: AppointmentRequest, rec?: Recommendation) {
     const date = req.desired_date.slice(0, 10)
-    navigate(`/appointments?request=${req.id}&date=${date}`)
+    navigate(`/appointments?request=${req.id}&date=${date}`, { state: rec ? { recommendation: rec } : undefined })
   }
 
   const { data: requests = [], isLoading } = useQuery({
@@ -292,7 +293,7 @@ export default function RequestsPage() {
         request={reviewing}
         onClose={() => setReviewing(null)}
         onSave={handleSave}
-        onConvert={() => { if (reviewing) openConvert(reviewing); setReviewing(null) }}
+        onConvert={(rec) => { if (reviewing) openConvert(reviewing, rec); setReviewing(null) }}
       />
     </div>
   )

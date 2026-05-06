@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { searchClients, createClient, checkDuplicateClients, type Client } from '@/api/clients'
 import { listServices } from '@/api/services'
@@ -34,6 +35,8 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
   const { t } = useTranslation()
   const qc = useQueryClient()
   const { user } = useAuth()
+  const location = useLocation()
+  const incomingRec: Recommendation | undefined = (location.state as { recommendation?: Recommendation } | null)?.recommendation
 
   const [clientMode, setClientMode] = useState<'new' | 'existing'>('new')
   const [newFirst, setNewFirst] = useState('')
@@ -174,6 +177,14 @@ export default function ConvertRequestPanel({ request, date, onDateChange, onClo
       return next
     })
   }, [services, providers, request.id])
+
+  // If we arrived here via "Use this" from the review dialog, auto-apply that recommendation.
+  const recApplied = useRef(false)
+  useEffect(() => {
+    if (!incomingRec || recApplied.current || services.length === 0) return
+    recApplied.current = true
+    applyRecommendation(incomingRec)
+  }, [incomingRec, services])
 
   function updateItem(idx: number, patch: Partial<ItemFormState>) {
     setItems(prev => {

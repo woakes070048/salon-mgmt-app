@@ -118,9 +118,11 @@ export default function AppointmentBookPage() {
     if (urlDate && urlDate !== date) setDate(urlDate)
   }, [searchParams.get('date')])
 
-  // Keep URL in sync so the AppShell mini calendar can track the current date
+  // Keep URL in sync. Preserve 'request' param so the convert panel stays mounted.
   useEffect(() => {
-    setSearchParams({ date }, { replace: true })
+    const params: Record<string, string> = { date }
+    if (requestId) params.request = requestId
+    setSearchParams(params, { replace: true })
   }, [date])
 
   useEffect(() => {
