@@ -74,7 +74,7 @@ async def get_recommendations(
         latest_end_minutes=latest,
     )
 
-    engine_results = await recommend(db, engine_request, top_n=3)
+    engine_results = await recommend(db, engine_request, top_n=body.top_n)
 
     recs = [
         Recommendation(
@@ -99,7 +99,7 @@ async def get_recommendations(
         for rec in engine_results
     ]
 
-    return RecommendationResponse(recommendations=recs, has_more=False)
+    return RecommendationResponse(recommendations=recs, has_more=len(recs) >= body.top_n)
 
 
 # ── Stations ───────────────────────────────────────────────────────────────────

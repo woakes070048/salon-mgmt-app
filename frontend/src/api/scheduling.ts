@@ -15,6 +15,7 @@ export interface RecommendRequest {
   desired_date: string        // YYYY-MM-DD
   earliest_start?: string     // HH:MM
   latest_end?: string         // HH:MM
+  top_n?: number              // 1–9, default 3
 }
 
 export interface RecommendationItem {

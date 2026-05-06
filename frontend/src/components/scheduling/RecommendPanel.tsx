@@ -33,6 +33,7 @@ export default function RecommendPanel({
   onSelect,
 }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [topN, setTopN] = useState(3)
 
   const requestedServices: RequestedService[] = services.map((s) => ({
     service_id: s.serviceId,
@@ -45,7 +46,7 @@ export default function RecommendPanel({
     requestedServices.length > 0
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['scheduling-recommend', tenantId, desiredDate, JSON.stringify(requestedServices), earliestStart, latestEnd],
+    queryKey: ['scheduling-recommend', tenantId, desiredDate, JSON.stringify(requestedServices), earliestStart, latestEnd, topN],
     queryFn: () =>
       getRecommendations({
         tenant_id: tenantId,
@@ -54,6 +55,7 @@ export default function RecommendPanel({
         desired_date: desiredDate,
         earliest_start: earliestStart,
         latest_end: latestEnd,
+        top_n: topN,
       }),
     enabled,
     staleTime: 30_000,
@@ -157,17 +159,18 @@ export default function RecommendPanel({
         ))}
       </div>
 
-      {/* "Show more options" stub — not yet implemented */}
-      <div className="flex justify-center pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled
-          className="text-xs text-muted-foreground"
-        >
-          Show more options
-        </Button>
-      </div>
+      {data?.has_more && (
+        <div className="flex justify-center pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={() => setTopN(9)}
+          >
+            Show more options
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

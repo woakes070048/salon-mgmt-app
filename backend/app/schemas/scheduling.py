@@ -111,6 +111,7 @@ class StructuredRequest(BaseModel):
         description="HH:MM — latest acceptable end time",
         pattern=r"^\d{2}:\d{2}$",
     )
+    top_n: int = Field(default=3, ge=1, le=9)
 
 
 class RecommendationItem(BaseModel):
