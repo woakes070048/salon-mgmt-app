@@ -8,6 +8,7 @@ import {
   listAllRequests,
   reviewRequest,
 } from '@/api/appointmentRequests'
+import { useAuth } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import RecommendPanel from '@/components/scheduling/RecommendPanel'
 
 const STATUS_VARIANT: Record<
   AppointmentRequest['status'],
@@ -52,10 +54,15 @@ function ReviewDialog({
 }) {
   const { t } = useTranslation()
   const { bcp47 } = useDateLocale()
+  const { user } = useAuth()
   const [newStatus, setNewStatus] = useState<AppointmentRequest['status']>('reviewed')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const recommendServices = request?.items
+    .filter(i => i.service_id)
+    .map(i => ({ serviceId: i.service_id! })) ?? []
 
   async function handleSave() {
     if (!request) return
@@ -73,7 +80,7 @@ function ReviewDialog({
 
   return (
     <Dialog open={!!request} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t('requests.review_title')}</DialogTitle>
         </DialogHeader>
@@ -100,6 +107,15 @@ function ReviewDialog({
                 <p className="mt-1 italic text-muted-foreground">"{request.special_note}"</p>
               )}
             </div>
+
+            {user && recommendServices.length > 0 && (
+              <RecommendPanel
+                tenantId={user.tenant_id}
+                services={recommendServices}
+                desiredDate={request.desired_date}
+                onSelect={() => { onClose(); onConvert() }}
+              />
+            )}
 
             <div className="space-y-1.5">
               <Label>{t('requests.update_status')}</Label>
