@@ -43,11 +43,6 @@ export default function LandingPage() {
         >
           {t('landing.sign_in')}
         </Link>
-        <img
-          src="/salon-lyol-logo.png"
-          alt="Salon Lyol"
-          className="h-48 w-auto drop-shadow-md"
-        />
       </header>
 
       {/* Main content */}
