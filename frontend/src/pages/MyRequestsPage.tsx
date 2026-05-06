@@ -101,7 +101,6 @@ function RequestForm({
 
     if (!desiredDate) { setError('Please select a desired date'); return }
     if (items.some(i => !i.service_name)) { setError('Please select a service for each item'); return }
-    if (items.some(i => !i.preferred_provider_name)) { setError('Please select a preferred provider for each item'); return }
 
     setSubmitting(true)
     try {
