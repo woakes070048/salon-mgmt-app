@@ -14,6 +14,7 @@ env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GCP_REGION: ${{ vars.GCP_REGION }}
   REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/salon-mgmt
+  DOCKER_BUILDKIT: "1"
 
 jobs:
   deploy:
@@ -25,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need previous commit to detect changes
 
       - id: auth
         name: Authenticate to GCP
@@ -39,39 +42,81 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
+      # ── Detect which sides changed ─────────────────────────────────────────
+      # workflow_dispatch always builds both. Push builds only what changed.
+      - name: Detect changed paths
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "api=true"      >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # API rebuilds when backend code, migrations, scripts, or CI itself changes
+          if echo "$CHANGED" | grep -qE '^(backend/|migrations/|scripts/|alembic\.ini|\.github/)'; then
+            echo "api=true" >> $GITHUB_OUTPUT
+          else
+            echo "api=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Frontend rebuilds when frontend code changes
+          if echo "$CHANGED" | grep -qE '^frontend/'; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
       # ── API image ──────────────────────────────────────────────────────────
-      - name: Build API image
+      - name: Build and push API image
+        if: steps.changes.outputs.api == 'true'
         run: |
           docker build \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-from ${{ env.REGISTRY }}/salon-api:latest \
             -f backend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-api:latest \
             .
-
-      - name: Push API image
-        run: |
           docker push ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/salon-api:latest
 
+      - name: Retag existing API image (no backend changes)
+        if: steps.changes.outputs.api == 'false'
+        run: |
+          docker pull ${{ env.REGISTRY }}/salon-api:latest
+          docker tag  ${{ env.REGISTRY }}/salon-api:latest ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+
       # ── Frontend image ─────────────────────────────────────────────────────
-      - name: Build frontend image
+      - name: Build and push frontend image
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           docker build \
-            --cache-from ${{ env.REGISTRY }}/salon-frontend:latest \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
             --build-arg VITE_API_URL=${{ vars.API_URL }} \
+            --cache-from ${{ env.REGISTRY }}/salon-frontend:latest \
             -f frontend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-frontend:latest \
             ./frontend
-
-      - name: Push frontend image
-        run: |
           docker push ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/salon-frontend:latest
 
+      - name: Retag existing frontend image (no frontend changes)
+        if: steps.changes.outputs.frontend == 'false'
+        run: |
+          docker pull ${{ env.REGISTRY }}/salon-frontend:latest
+          docker tag  ${{ env.REGISTRY }}/salon-frontend:latest ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
+
       # ── Deploy ─────────────────────────────────────────────────────────────
       - name: Deploy API to Cloud Run
+        if: steps.changes.outputs.api == 'true'
         env:
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
         run: |
@@ -88,6 +133,7 @@ jobs:
             --quiet
 
       - name: Deploy frontend to Cloud Run
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           gcloud run deploy salon-frontend \
             --image ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
