@@ -467,22 +467,91 @@ async def import_receipts(
         if rnum:
             receipt_groups[rnum].append(r)
 
-    created = updated = skipped_existing = skipped_no_client = skipped_walk_in = errors = 0
+    created = updated = skipped_existing = skipped_no_client = walk_in_created = errors = 0
 
     for receipt_num, items in receipt_groups.items():
         client_code = (items[0].get("Client") or "").strip()
         date_str = (items[0].get("Date") or "").strip()
+        note_key = f"legacy_receipt:{receipt_num}"
+        is_walk_in = client_code == "WALK_IN"
 
-        if client_code == "WALK_IN":
-            skipped_walk_in += 1
+        if is_walk_in:
+            # WALK_IN receipts have no client — create a sale-only record (no appointment).
+            # Dedup: skip if a sale with this receipt note already exists.
+            existing_walk_in_sale = (await db.execute(
+                text("SELECT id FROM sales WHERE tenant_id = :tid AND notes = :note"),
+                {"tid": tenant_id, "note": note_key},
+            )).fetchone()
+            if existing_walk_in_sale:
+                skipped_existing += 1
+                continue
+
+            try:
+                appt_dt = _parse_date_noon(date_str)
+            except ValueError:
+                errors += 1
+                continue
+
+            subtotal = sum(float(r.get("Amount") or 0) for r in items)
+            gst_total = sum(float(r.get("GST") or 0) for r in items)
+            pst_total = sum(float(r.get("PST") or 0) for r in items)
+            total = subtotal + gst_total + pst_total
+            completed_at = appt_dt.replace(tzinfo=timezone.utc)
+
+            sale_id = uuid.uuid4()
+            await db.execute(
+                text("INSERT INTO sales (id, tenant_id, client_id, subtotal, discount_total,"
+                     " gst_amount, pst_amount, total, status, notes, completed_at,"
+                     " created_at, updated_at)"
+                     " VALUES (:id, :tid, NULL, :sub, 0, :gst, :pst, :total,"
+                     " 'completed', :note, :cat, NOW(), NOW())"),
+                {"id": sale_id, "tid": tenant_id,
+                 "sub": Decimal(str(round(subtotal, 2))),
+                 "gst": Decimal(str(round(gst_total, 2))),
+                 "pst": Decimal(str(round(pst_total, 2))),
+                 "total": Decimal(str(round(total, 2))),
+                 "note": note_key, "cat": completed_at},
+            )
+
+            for idx, item in enumerate(items):
+                desc = (item.get("Description") or "").strip()
+                staff = (item.get("Staff") or "").strip().upper()
+                amount = float(item.get("Amount") or 0)
+                qty = int(item.get("Quantity") or 1)
+                kind = "service" if _is_service(desc) else "retail"
+                provider_id = provider_map.get(staff) if staff else None
+                await db.execute(
+                    text("INSERT INTO sale_items (id, tenant_id, sale_id, appointment_item_id,"
+                         " description, provider_id, kind, sequence, quantity,"
+                         " unit_price, discount_amount, line_total, created_at, updated_at)"
+                         " VALUES (:id, :tid, :sale_id, NULL,"
+                         " :desc, :prov_id, :kind, :seq, :qty,"
+                         " :unit_price, 0, :line_total, NOW(), NOW())"),
+                    {"id": uuid.uuid4(), "tid": tenant_id, "sale_id": sale_id,
+                     "desc": desc, "prov_id": provider_id,
+                     "kind": kind, "seq": idx + 1, "qty": qty,
+                     "unit_price": Decimal(str(round(amount, 2))),
+                     "line_total": Decimal(str(round(amount * qty, 2)))},
+                )
+
+            await db.execute(
+                text("INSERT INTO sale_payments (id, tenant_id, sale_id, payment_method_id,"
+                     " amount, cashback_amount, created_at, updated_at)"
+                     " VALUES (:id, :tid, :sale_id, :pm_id, :amount, 0, NOW(), NOW())"),
+                {"id": uuid.uuid4(), "tid": tenant_id,
+                 "sale_id": sale_id, "pm_id": unknown_pm_id,
+                 "amount": Decimal(str(round(total, 2)))},
+            )
+            walk_in_created += 1
+
+            if walk_in_created % 200 == 0:
+                await db.commit()
             continue
 
         client_id = client_map.get(client_code)
         if not client_id:
             skipped_no_client += 1
             continue
-
-        note_key = f"legacy_receipt:{receipt_num}"
 
         # Appointment time: use booking record if available, else noon
         bk_time = booking_time.get((client_code, date_str))
@@ -668,9 +737,9 @@ async def import_receipts(
     return {
         "created": created,
         "updated": updated,
+        "walk_in_created": walk_in_created,
         "skipped_existing": skipped_existing,
         "skipped_no_client": skipped_no_client,
-        "skipped_walk_in": skipped_walk_in,
         "errors": errors,
     }
 
