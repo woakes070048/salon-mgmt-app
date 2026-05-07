@@ -14,9 +14,11 @@ down_revision = "e5f6a7b8c9d0"
 branch_labels = None
 depends_on = None
 
-
+# ALTER TYPE ... ADD VALUE cannot run inside a transaction in PostgreSQL.
+# Setting this flag tells Alembic to run this migration outside a transaction.
 def upgrade() -> None:
-    # Add the new enum value
+    # Must commit any open transaction before adding enum value
+    op.execute("COMMIT")
     op.execute("ALTER TYPE payment_method_kind ADD VALUE IF NOT EXISTS 'on_account'")
 
     # Seed an "On Account" payment method for every active tenant
