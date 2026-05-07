@@ -232,6 +232,8 @@ async def monthly_report(
 
     # If every payment is "unknown" (imported historical data), fall back to
     # the historical_payment_summary table if it has data for this period.
+    # Special labels ON_ACCOUNT_SALES / ON_ACCOUNT_PAYMENTS are routed to
+    # the on_account fields, not the payment method list.
     all_unknown = all(r[0].lower() in ("unknown", "on account") for r in payment_rows)
     if all_unknown:
         from sqlalchemy import text as _sql
@@ -242,7 +244,16 @@ async def monthly_report(
             {"tid": tid, "y": year, "m": month},
         )).fetchall()
         if hist_rows:
-            payment_rows = [(r.label, r.amount, 0) for r in hist_rows]
+            payment_rows = [
+                (r.label, r.amount, 0) for r in hist_rows
+                if r.label not in ("ON_ACCOUNT_SALES", "ON_ACCOUNT_PAYMENTS")
+            ]
+            # Override on_account figures from historical data
+            for r in hist_rows:
+                if r.label == "ON_ACCOUNT_SALES":
+                    on_account_sales = Decimal(str(r.amount))
+                elif r.label == "ON_ACCOUNT_PAYMENTS":
+                    on_account_payments = Decimal(str(r.amount))
 
     # ── By day ────────────────────────────────────────────────────────────────
     day_rows = (
