@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileText, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, type ImportResult, type ZeroApptPreview } from '@/api/admin'
+import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, type ImportResult, type ZeroApptPreview } from '@/api/admin'
 
 const FILES = [
   { key: 'clients_csv',          labelKey: 'import.client_details',          hint: 'Client Details.txt',            required: true  },
@@ -234,6 +234,10 @@ export default function DataImportPage() {
         <div className="mt-8 pt-6 border-t">
           <ZeroApptCleanup />
         </div>
+
+        <div className="mt-8 pt-6 border-t">
+          <HistoricalPayments />
+        </div>
       </div>
     </div>
   )
@@ -278,6 +282,128 @@ function ImportResults({ result }: { result: ImportResult }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+]
+
+const DEFAULT_LABELS = ['VISA','MASTERCARD','AMEX','DEBIT','CASH','E-TRANSFER']
+
+function HistoricalPayments() {
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [rows, setRows] = useState<{ label: string; amount: string }[]>(
+    DEFAULT_LABELS.map(l => ({ label: l, amount: '' }))
+  )
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function updateRow(idx: number, field: 'label' | 'amount', val: string) {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
+    setSaved(false)
+  }
+
+  function addRow() {
+    setRows(prev => [...prev, { label: '', amount: '' }])
+  }
+
+  function removeRow(idx: number) {
+    setRows(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+    try {
+      const validRows = rows
+        .filter(r => r.label.trim() && r.amount.trim())
+        .map(r => ({ label: r.label.trim().toUpperCase(), amount: parseFloat(r.amount) }))
+        .filter(r => Number.isFinite(r.amount))
+      if (!validRows.length) throw new Error('No valid rows to save')
+      await upsertHistoricalPayments({ year, month, rows: validRows, source: 'milano' })
+      setSaved(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold">Historical Payment Breakdown</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Enter monthly payment type totals from Milano Daily Sales Reports. These populate
+          the Payment Reconciliation section of the sales report for historical months.
+        </p>
+      </div>
+
+      <div className="flex gap-3">
+        <select
+          value={year}
+          onChange={e => { setYear(Number(e.target.value)); setSaved(false) }}
+          className="border rounded-md px-2 py-1.5 text-sm bg-white"
+        >
+          {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select
+          value={month}
+          onChange={e => { setMonth(Number(e.target.value)); setSaved(false) }}
+          className="border rounded-md px-2 py-1.5 text-sm bg-white"
+        >
+          {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        {rows.map((row, idx) => (
+          <div key={idx} className="flex gap-2 items-center">
+            <input
+              value={row.label}
+              onChange={e => updateRow(idx, 'label', e.target.value)}
+              placeholder="Payment type"
+              className="border rounded-md px-2 py-1.5 text-sm w-36 bg-white"
+            />
+            <span className="text-muted-foreground text-sm">$</span>
+            <input
+              value={row.amount}
+              onChange={e => updateRow(idx, 'amount', e.target.value)}
+              placeholder="0.00"
+              type="number"
+              step="0.01"
+              className="border rounded-md px-2 py-1.5 text-sm w-32 bg-white tabular-nums"
+            />
+            <button
+              onClick={() => removeRow(idx)}
+              className="text-muted-foreground hover:text-destructive text-xs px-1"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={addRow}
+          className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+        >
+          + Add row
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : `Save ${MONTHS[month - 1]} ${year}`}
+        </Button>
+        {saved && <span className="text-xs text-green-600">Saved — refresh the sales report to see it.</span>}
+        {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
     </div>
   )

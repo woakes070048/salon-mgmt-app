@@ -213,6 +213,8 @@ async def monthly_report(
     ).all()
 
     # ── By payment method ─────────────────────────────────────────────────────
+    # Prefer historical (Milano) data for periods where all payments are "unknown".
+    # This backfills the payment breakdown for months before SalonOS went live.
     payment_rows = (
         await db.execute(
             select(
@@ -227,6 +229,20 @@ async def monthly_report(
             .order_by(func.sum(Payment.amount).desc())
         )
     ).all()
+
+    # If every payment is "unknown" (imported historical data), fall back to
+    # the historical_payment_summary table if it has data for this period.
+    all_unknown = all(r[0].lower() in ("unknown", "on account") for r in payment_rows)
+    if all_unknown:
+        from sqlalchemy import text as _sql
+        hist_rows = (await db.execute(
+            _sql("SELECT label, amount FROM historical_payment_summary "
+                 "WHERE tenant_id = :tid AND year = :y AND month = :m "
+                 "ORDER BY amount DESC"),
+            {"tid": tid, "y": year, "m": month},
+        )).fetchall()
+        if hist_rows:
+            payment_rows = [(r.label, r.amount, 0) for r in hist_rows]
 
     # ── By day ────────────────────────────────────────────────────────────────
     day_rows = (

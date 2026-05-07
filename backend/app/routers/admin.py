@@ -765,3 +765,78 @@ async def delete_zero_appt_clients(
     await db.execute(_delete(Client).where(Client.id.in_(ids)))
     await db.commit()
     return {"deleted": len(ids)}
+
+
+# ── Historical payment summary ────────────────────────────────────────────────
+
+class HistoricalPaymentRow(BaseModel):
+    label: str
+    amount: float
+
+class HistoricalPaymentIn(BaseModel):
+    year: int
+    month: int
+    rows: list[HistoricalPaymentRow]
+    source: str = "milano"
+
+class HistoricalPaymentOut(BaseModel):
+    year: int
+    month: int
+    label: str
+    amount: float
+    source: str
+
+
+@router.put("/historical-payments")
+async def upsert_historical_payments(
+    body: HistoricalPaymentIn,
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Upsert monthly payment type totals from an external source (e.g. Milano).
+    Replaces all rows for the given year/month if they exist."""
+    from sqlalchemy import text as _text
+    tid = current_user.tenant_id
+
+    # Delete existing rows for this period
+    await db.execute(
+        _text("DELETE FROM historical_payment_summary WHERE tenant_id = :tid AND year = :y AND month = :m"),
+        {"tid": tid, "y": body.year, "m": body.month},
+    )
+
+    # Insert new rows
+    for row in body.rows:
+        await db.execute(
+            _text("""
+                INSERT INTO historical_payment_summary
+                    (tenant_id, year, month, label, amount, source, created_at, updated_at)
+                VALUES (:tid, :y, :m, :label, :amount, :source, NOW(), NOW())
+            """),
+            {"tid": tid, "y": body.year, "m": body.month,
+             "label": row.label, "amount": row.amount, "source": body.source},
+        )
+
+    await db.commit()
+    return {"saved": len(body.rows), "year": body.year, "month": body.month}
+
+
+@router.get("/historical-payments")
+async def list_historical_payments(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[HistoricalPaymentOut]:
+    from sqlalchemy import text as _text
+    rows = (await db.execute(
+        _text("""
+            SELECT year, month, label, amount, source
+            FROM historical_payment_summary
+            WHERE tenant_id = :tid
+            ORDER BY year, month, label
+        """),
+        {"tid": current_user.tenant_id},
+    )).fetchall()
+    return [
+        HistoricalPaymentOut(year=r.year, month=r.month, label=r.label,
+                             amount=float(r.amount), source=r.source)
+        for r in rows
+    ]

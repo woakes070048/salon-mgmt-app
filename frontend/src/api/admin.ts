@@ -133,6 +133,36 @@ export function deleteZeroApptClients(): Promise<{ deleted: number }> {
   return api.delete<{ deleted: number }>('/admin/cleanup/zero-appointment-clients')
 }
 
+// ── Historical payment summary ────────────────────────────────────────────────
+
+export interface HistoricalPaymentRow {
+  label: string
+  amount: number
+}
+
+export interface HistoricalPaymentIn {
+  year: number
+  month: number
+  rows: HistoricalPaymentRow[]
+  source?: string
+}
+
+export interface HistoricalPaymentOut {
+  year: number
+  month: number
+  label: string
+  amount: number
+  source: string
+}
+
+export function upsertHistoricalPayments(body: HistoricalPaymentIn): Promise<{ saved: number }> {
+  return api.put<{ saved: number }>('/admin/historical-payments', body)
+}
+
+export function getHistoricalPayments(): Promise<HistoricalPaymentOut[]> {
+  return api.get<HistoricalPaymentOut[]>('/admin/historical-payments')
+}
+
 // ── Legacy data import ────────────────────────────────────────────────────────
 
 export interface ImportResult {
