@@ -1,3 +1,4 @@
+// Milano-format sales report
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, addMonths, subMonths, endOfMonth } from 'date-fns'
