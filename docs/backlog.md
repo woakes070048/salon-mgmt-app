@@ -961,3 +961,52 @@ Validate that SalonOS payroll figures match Milano for the parallel run period. 
 **Input needed:** Milano payroll/commission export for the parallel run month (same format as the receipts CSV — Comstaff1/Comstaff2 columns are the commission %).
 
 **Depends on:** PR-1 (WALK_IN import fix) — walk-in sales have staff attribution and affect commission totals.
+
+---
+
+### P4-1 · QuickBooks Online integration
+
+Automate the daily bookkeeping journal entries from SalonOS into QuickBooks Online, replacing the need for a bookkeeper to manually transcribe Milano Daily Sales Reports.
+
+**What gets pushed to QBO:**
+
+- **Daily sales journal entry** — for each business day, one journal entry:
+  - Dr. Merchant account — VISA (net of processing fees)
+  - Dr. Merchant account — DEBIT
+  - Dr. Merchant account — AMEX
+  - Dr. Cash in drawer (CASH payments)
+  - Dr. Accounts Receivable (On Account sales)
+  - Dr. Gift Card Liability (gift card sales)
+  - Cr. Service Revenue
+  - Cr. Retail Revenue
+  - Cr. GST Payable
+  - Cr. PST/QST Payable
+- **Petty cash entries** — each petty cash disbursement recorded in SalonOS becomes a QBO expense
+- **Account payment received** — when a client pays their on-account balance, debit cash/card and credit Accounts Receivable
+
+**What stays outside SalonOS:**
+- Merchant processing fee reconciliation (handled by QBO bank feeds from your processor)
+- Bank statement reconciliation (QBO bank feeds)
+- HST remittances, T4s, year-end adjustments (accountant)
+
+**Implementation:**
+
+1. **QBO OAuth setup** — Settings → Integrations → Connect QuickBooks. Standard OAuth 2.0 flow; store refresh token in Secret Manager.
+2. **Chart of Accounts mapping** — one-time setup screen where staff maps SalonOS categories (Service Revenue, GST Payable, etc.) to existing QBO account IDs. Stored in a `qbo_account_mapping` table.
+3. **Nightly sync job** — Cloud Scheduler → `POST /internal/sync-qbo` — queries completed sales for the previous business day, builds journal entries, pushes via QBO API.
+4. **Manual backfill** — a date-range trigger to backfill historical months.
+5. **Sync log** — every push logged with QBO transaction ID, status, and any errors surfaced in a Settings → Integrations page.
+
+**QBO API notes:**
+- Use QuickBooks Online API (not Desktop) — REST, well-documented, OAuth 2.0
+- Journal entries: `POST /v3/company/{companyId}/journalentry`
+- Sandbox available for testing without touching real QBO data
+- Rate limit: 500 requests/minute, more than sufficient for nightly batch
+
+**Prerequisites:**
+- Payment type breakdown working for all months (in progress)
+- On Account payment type live (done)
+- Petty cash module live (done)
+- Chart of accounts discussion with bookkeeper before go-live to confirm account names/IDs
+
+**Phase:** P4 — after SalonOS is in production at Salon Lyol. Set up in parallel with go-live so the first live day's data flows automatically.
