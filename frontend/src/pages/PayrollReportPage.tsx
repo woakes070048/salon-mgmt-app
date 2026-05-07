@@ -47,17 +47,25 @@ interface EditableLine {
   service_commission: number
   retail_commission: number
   vacation_pct: number
+  gross_pay: number
 }
 
 function generatePayLine(line: EditableLine): string {
   const name = `${line.first_name} ${line.last_name}`
 
   if (line.is_owner) {
+    if (line.pay_basis === 'salary') {
+      return `${name}\nSalary = $${fmtCad(line.gross_pay)} (No Stat holidays and no Vacation pay)`
+    }
     return `${name}\nService Commission = $${fmtCad(line.service_commission)} (No Stat holidays and no Vacation pay)`
   }
 
+  if (line.pay_basis === 'n/a') return ''
+
   let base = ''
-  if (line.pay_basis === 'hourly' && line.hourly_minimum) {
+  if (line.pay_basis === 'salary') {
+    base = `Salary $${fmtCad(line.gross_pay)}`
+  } else if (line.pay_basis === 'hourly' && line.hourly_minimum) {
     const total = Math.round(line.scheduled_hours * line.hourly_minimum * 100) / 100
     base = `${Math.round(line.scheduled_hours)} hours @$${fmtCad(line.hourly_minimum)} = $${fmtCad(total)}`
   } else {
@@ -259,9 +267,11 @@ export default function PayrollReportPage() {
       pay_basis: l.pay_basis,
       scheduled_hours: l.scheduled_hours,
       hourly_minimum: l.hourly_minimum,
-      service_commission: l.service_commission,
+      // For salary employees, surface gross_pay as the editable commission field
+      service_commission: l.pay_basis === 'salary' ? l.gross_pay : l.service_commission,
       retail_commission: l.retail_commission,
       vacation_pct: l.vacation_pct,
+      gross_pay: l.gross_pay,
     }
   }
 
