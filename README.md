@@ -6,7 +6,7 @@
 
 <p align="center">
   Cloud-native salon management software built for the way premium salons actually work —<br>
-  a modern, AI-ready platform replacing legacy desktop tools.
+  a modern, AI-first platform replacing legacy desktop tools.
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
     <img src="https://github.com/freddy6ix/salon-mgmt-app/actions/workflows/deploy.yml/badge.svg" alt="Deploy to Staging">
   </a>
   &nbsp;
-  <img src="https://img.shields.io/badge/phase-2%20nearly%20complete-blue" alt="Phase 2 nearly complete">
+  <img src="https://img.shields.io/badge/phase-3%20in%20progress-blue" alt="Phase 3 in progress">
   &nbsp;
   <img src="https://img.shields.io/badge/deployed-GCP%20Cloud%20Run-4285F4?logo=googlecloud&logoColor=white" alt="Deployed on GCP">
 </p>
@@ -23,7 +23,7 @@
 
 ## The Problem
 
-Legacy salon software was designed for a different era — desktop-first, rigid pricing models, and no path to customization. For a high-end independent salon like [Salon Lyol](https://salonlyol.ca) in Toronto, the appointment book *is* the business: multi-service, multi-provider bookings where colour-development gaps and idle-time optimization are daily concerns. No off-the-shelf tool models this correctly.
+Legacy salon software was designed for a different era — desktop-first, rigid pricing models, and no path to customization. For a high-end independent salon like [Salon Lyol](https://salonlyol.ca) in Toronto, the appointment book *is* the business: multi-service, multi-provider bookings where colour-development gaps and idle-time optimization are daily concerns. No off-the-shelf tool models this correctly, and none ship meaningful AI features.
 
 This project replaces Salon Lyol's current system with purpose-built cloud software, and is being designed from day one as a multi-tenant SaaS platform for other premium salons.
 
@@ -90,8 +90,8 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 
 ### Appointment Book
 - Interactive drag-and-drop grid with multi-provider columns
-- Multi-service appointments (appointment = container, items = individual services per provider)
-- Colour-development gap rendering — processing time appears as free blocks on the grid so providers can take other clients
+- Multi-service appointments — appointment is a container, items are individual services per provider
+- Colour-development gap rendering — processing time appears as free blocks on the grid so providers can take other clients during colour development
 - Scheduled time blocks (lunch, training, closures) — moveable and resizable
 - Full status flow: requested → confirmed → in-progress → completed / cancelled
 - Conflict detection across all providers
@@ -101,6 +101,23 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Staff review, adjust, and confirm requests; clients do not self-book (deliberate quality control)
 - Branded confirmation emails — staff-authored, never automatic
 - Instant email notification to staff when a new request arrives
+- **Inbound email ingestion** — emails sent to a dedicated booking address are parsed by Claude Haiku, classified for intent, and converted into structured appointment requests automatically; staff review and confirm
+
+### AI Scheduling Recommendation Engine
+- When converting a booking request to a confirmed appointment, the engine searches available slots across all providers
+- Weighted scoring: slot time proximity to client preference, provider–client relationship history, provider utilization balance, and service compatibility
+- Deep-first search algorithm evaluates multi-service sequences with correct sequencing constraints and processing gaps
+- Recommendations surfaced in-panel with ranked options; staff select or override
+- Fully integrated with the existing appointment conflict model
+
+### Briefing Engine
+- Dual-purpose pipeline delivering AI-generated daily briefings to multiple audiences from the same synthesizer
+- **Developer audience** — Freddy receives a daily market intelligence brief: competitor moves, AI feature gaps, pricing changes across Zenoti, Boulevard, Mangomint, and others
+- **claude_code audience** — a parallel brief is written as feature recommendations framed for an AI coding assistant and auto-loaded into the project context at session start
+- **Salon owner audience** — revenue trends, booking patterns, and operational insights (in progress)
+- **Stylist audience** — upcoming client list with formula notes and service history (in progress)
+- Delivered via email, in-app, or file; architecture supports SMS and voice channels
+- All behaviour controlled by `BriefingConfig` — no hardcoded audience, channel, or topic logic
 
 ### POS & Checkout
 - Checkout panel on any in-progress appointment
@@ -110,7 +127,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Ontario GST (5%) + PST (8%) tracked per sale, with per-item tax flags for retail
 - Cashback flow: tips are returned to the client as change and never touch salon revenue — correct for how the salon actually operates, and required for honest cash reconciliation
 - Tenant-defined promotions — percent or fixed-amount discounts applied per line at checkout
-- Sale summary on completed appointments with payment breakdown
+- Sale summary on completed appointments with full payment breakdown
 - Edit completed sale payments (same-day correction with full audit log)
 
 ### Retail & Inventory
@@ -118,10 +135,10 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Retail items available at checkout alongside services
 - Stock ledger: receive, sell, adjust, and return movements per item
 - On-hand count displayed in the catalog; sold at checkout automatically decremented
-- Adjustment flow: staff enters a physical count and the delta is computed and recorded with a reason
+- Adjustment flow: staff enters a physical count, delta is computed and recorded with a reason
 
 ### Sales Reporting & Cash Reconciliation
-- Monthly sales report covering revenue, discounts, taxes, and payment-type breakdown
+- Monthly sales report covering revenue, discounts, taxes, and payment-type breakdown by provider
 - End-of-day cash till: open/close periods, petty cash entries, expected vs. counted variance, 30-day history
 
 ### Client CRM
@@ -129,11 +146,14 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Complete appointment history with start times, providers, and prices
 - No-show and late-cancellation counts
 - Slide-over panel accessible directly from any appointment on the grid — no page navigation
+- Duplicate client detection and merge tooling
+- Zero-appointment client cleanup tool for data hygiene
 
 ### Service Catalog
 - Full CRUD for categories, services, per-provider pricing, and duration overrides
 - Processing-offset and processing-duration fields drive the grid's gap rendering
 - Gender-free haircut classification (Type 1 / Type 2 / Type 2+) — pricing based on effort and expertise, not client gender
+- English and French translations per service and category (i18n-ready for Quebec salons)
 
 ### Notifications & Email
 - Staff-authored appointment confirmation emails with branded layout
@@ -141,6 +161,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - New booking request notifications to configurable salon recipients
 - Rich-text WYSIWYG body editor for confirmation emails (Tiptap)
 - Fully branded email layout: salon logo, brand colour, address, and footer on all outbound email
+- Self-service password reset flow with time-limited tokens
 
 ### Staff Management & Payroll
 - Full provider CRUD: profile, contact info, booking settings, photo
@@ -150,17 +171,20 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Commission tiers: configurable revenue brackets with per-provider rates
 - Product fee rules: flat fee per styling service, percentage of colour revenue
 - Retail commission percentage per provider
+- Staff check-in / check-out time tracking with per-period time entry management
 - Weekly schedule management with versioned effective dates — past schedules locked
 - Per-date exceptions (days off, modified hours)
 - **Payroll calculator** per provider per period: scheduled hours, service revenue by category, product fees, commission tier selection, retail commission, vacation pay — displayed as a full breakdown
-- **Payroll Report** page: calculates all active providers for a configurable pay period (default: 16th of prior month → 15th of current month), editable amounts per provider, auto-generates the payroll email in Paytrak format, sends directly to the payroll provider or saves as PDF
+- **Payroll Report** page: calculates all active providers for a configurable pay period, editable amounts per provider, auto-generates the payroll email in Paytrak format, sends directly to the payroll provider
 
 ### Settings & Branding
 - Tenant logo, brand colour, address, phone — applied to the app header and all outbound emails
 - Configurable appointment slot granularity and operating hours
 - User management: add, edit role, deactivate, and hard-delete staff and guest accounts
 - Email settings: SMTP or Resend API, client communications address, accounting/payroll address
-- Payroll provider settings: provider name, email, client ID, signature, and email footer — pre-fills the Payroll Report page
+- Payroll provider settings: provider name, email, client ID, signature, and email footer
+- Login audit log (admin-only) — timestamp, IP, and outcome per login attempt
+- Legacy data import: idempotent bulk import from prior system (clients, historical appointments, sales, future bookings)
 
 ---
 
@@ -169,11 +193,11 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **1** | Appointment book · Client management · Guest booking · Staff schedules | ✅ Complete |
-| **2** | POS & checkout · Notifications · Sales reporting · Retail catalog · Inventory · Staff management · Payroll | 🔄 Nearly complete |
-| **3** | Multi-tenancy hardening · Beta salon onboarding | Planned |
-| **4** | AI-integrated CRM (email, chat, voice) · Advanced analytics | Planned |
+| **2** | POS & checkout · Notifications · Sales reporting · Retail catalog · Inventory · Staff management · Payroll | ✅ Complete |
+| **3** | AI scheduling · Briefing Engine · Inbound email intake · Multi-tenancy hardening · Beta onboarding | 🔄 In progress |
+| **4** | Voice AI receptionist · Advanced analytics · Client-facing briefings | Planned |
 
-**Phase 2 remaining:** bulk data import (clients, appointments, services, staff); staff check-in/check-out; annual salary pay type.
+**Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing; Social/SSO login.
 
 ---
 
@@ -183,11 +207,13 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 | Metric | Count |
 |--------|-------|
-| **Frontend** (TypeScript / React) | ~14,650 lines · 66 files |
-| **Backend** (Python / FastAPI) | ~8,850 lines · 53 files |
-| **Database migrations** (Alembic) | ~1,970 lines · 36 migrations |
-| **Total source** | **~25,470 lines** |
-| **Git commits** | 208 |
+| **Frontend** (TypeScript / React) | ~17,900 lines · 79 files |
+| **Backend** (Python / FastAPI) | ~14,100 lines · 73 files |
+| **Database migrations** (Alembic) | ~3,000 lines · 52 migrations |
+| **Total source** | **~35,000 lines** |
+| **Git commits** | 354 |
+| **API endpoints** | ~90 |
+| **Database entities** | 24 core models |
 
 ---
 
@@ -197,11 +223,13 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 |-------|-----------|
 | **API** | Python · FastAPI · SQLAlchemy 2 (async) · Alembic |
 | **Database** | PostgreSQL 16 |
-| **Frontend** | TypeScript · React · Vite · Tailwind CSS · shadcn/ui |
+| **Frontend** | TypeScript · React 19 · Vite · Tailwind CSS · shadcn/ui · i18next (EN/FR) |
+| **AI** | Anthropic Claude API — Sonnet 4.6 (briefings, scheduling) · Haiku 4.5 (email intent extraction) |
+| **Email** | Resend API · SMTP · Tiptap rich-text editor |
 | **Cloud** | GCP Cloud Run · Cloud SQL · Cloud Storage · Secret Manager · Artifact Registry |
 | **Infrastructure** | Terraform |
 | **CI/CD** | GitHub Actions — build, push, and deploy to Cloud Run on every push to `main` |
-| **Auth** | JWT with refresh tokens · bcrypt |
+| **Auth** | JWT · bcrypt |
 
 ---
 
@@ -210,24 +238,29 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 Two Cloud Run services (API + frontend) backed by Cloud SQL PostgreSQL. Secrets are injected via Secret Manager — no plaintext in containers or environment files. The API runs Alembic migrations automatically on startup, so every deploy is schema-current.
 
 ```
-Guest (salonlyol.ca)          Staff browser
-         │                          │
-         └──────────┬───────────────┘
-                    ▼
-             Cloud Run
-          salon-frontend (Nginx + React SPA)
-                    │
-                    ▼
-             Cloud Run
-          salon-api (FastAPI / uvicorn)
-                    │
-        ┌───────────┼───────────┐
-        ▼           ▼           ▼
-    Cloud SQL   Cloud        Secret
-    Postgres   Storage      Manager
+Guest (salonlyol.ca)        Staff browser        Inbound email
+         │                        │                    │
+         └────────────┬───────────┘                    │
+                      ▼                                ▼
+               Cloud Run                         Resend webhook
+            salon-frontend                            │
+            (Nginx + React SPA)                       │
+                      │                               │
+                      ▼                               ▼
+               Cloud Run ◄──── Cloud Scheduler ──────►
+            salon-api (FastAPI)
+                      │
+        ┌─────────────┼─────────────┐
+        ▼             ▼             ▼
+    Cloud SQL     Cloud          Secret
+    Postgres     Storage        Manager
+        │
+        ▼
+  Anthropic API
+  (Claude Sonnet + Haiku)
 ```
 
-The frontend is a single-page app served from Nginx; all data flows through the FastAPI backend. The public booking form and staff application share the same API — access is scoped by JWT role.
+The frontend is a single-page app served from Nginx; all data flows through the FastAPI backend. The public booking form and staff application share the same API — access is scoped by JWT role. Cloud Scheduler triggers reminder dispatch and daily briefings.
 
 ---
 
