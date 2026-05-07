@@ -59,6 +59,7 @@ class MonthlyReport(BaseModel):
     retail_gross: str
     retail_discount: str
     retail_total: str
+    retail_returns: str
     gift_card_total: str
     on_account_sales: str
     on_account_payments: str
@@ -145,6 +146,21 @@ async def monthly_report(
         ).scalar() or 0
     ))
 
+    # ── Retail returns (negative retail line_totals — returned product) ──────────
+    retail_returns = Decimal(str(abs(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(SaleItem.line_total), 0))
+                .join(Sale, Sale.id == SaleItem.sale_id)
+                .where(
+                    *completed,
+                    SaleItem.kind == SaleItemKind.retail,
+                    SaleItem.line_total < 0,
+                )
+            )
+        ).scalar() or 0
+    )))
+
     # ── Gift card sales (retail items whose description mentions gift/g.c.) ────
     gift_card_total = Decimal(str(
         (
@@ -215,11 +231,14 @@ async def monthly_report(
         )
     ).all()
 
+    # Use item-level total for "before tax" so service + retail + gift_card adds up correctly
+    before_tax = service_total + retail_total
+
     return MonthlyReport(
         year=year,
         month=month,
         sale_count=sale_count,
-        subtotal=_d(subtotal),
+        subtotal=_d(before_tax),
         discount_total=_d(discount_total),
         gst_amount=_d(gst),
         pst_amount=_d(pst),
@@ -230,6 +249,7 @@ async def monthly_report(
         retail_gross=_d(retail_gross),
         retail_discount=_d(retail_discount),
         retail_total=_d(retail_total),
+        retail_returns=_d(retail_returns),
         gift_card_total=_d(gift_card_total),
         on_account_sales=_d(on_account_sales),
         on_account_payments=_d(on_account_payments),

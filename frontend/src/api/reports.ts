@@ -34,6 +34,7 @@ export interface MonthlyReport {
   retail_gross: string
   retail_discount: string
   retail_total: string
+  retail_returns: string
   gift_card_total: string
   on_account_sales: string
   on_account_payments: string

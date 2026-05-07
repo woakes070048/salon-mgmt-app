@@ -143,29 +143,34 @@ export default function ReportsPage() {
 
             {/* Revenue */}
             <Section title={t('reports.revenue_section')}>
-              <Row label={t('reports.service_sales')} value={fmt(report.service_gross)} />
-              {parseFloat(report.service_discount) > 0 && (
-                <Row label={t('reports.less_discounts')} value={fmt(report.service_discount)} indent negative />
-              )}
-              <Row label={t('reports.total_service')} value={fmt(report.service_total)} />
-              <Row label={t('reports.retail_sales')} value={fmt(report.retail_gross)} />
-              {parseFloat(report.retail_discount) > 0 && (
-                <Row label={t('reports.less_discounts')} value={fmt(report.retail_discount)} indent negative />
-              )}
-              <Row label={t('reports.total_retail')} value={fmt(report.retail_total)} />
-              <Row label={t('reports.before_tax')} value={fmt(report.subtotal)} bold />
-              <Row label={t('reports.gst')} value={fmt(report.gst_amount)} indent />
-              <Row label={t('reports.pst')} value={fmt(report.pst_amount)} indent />
-              {parseFloat(report.gift_card_total) !== 0 && (
-                <Row label="Gift cards" value={fmt(report.gift_card_total)} />
-              )}
-              {parseFloat(report.on_account_sales) !== 0 && (
-                <Row label="Less on account sales" value={fmt(report.on_account_sales)} negative />
-              )}
-              {parseFloat(report.on_account_payments) !== 0 && (
-                <Row label="Plus on account payments" value={fmt(report.on_account_payments)} />
-              )}
-              <Row label={t('reports.grand_total')} value={fmt(report.total)} bold />
+              {/* Service stream */}
+              <Row label="Service sales" value={fmt(report.service_gross)} />
+              <Row label="Less discounts" value={fmt(report.service_discount)} indent negative />
+              <Row label="Less returns" value="0.00" indent negative />
+              <Row label="Total service sales" value={fmt(report.service_total)} />
+
+              {/* Retail stream */}
+              <Row label="Retail sales" value={fmt(report.retail_gross)} />
+              <Row label="Less discounts" value={fmt(report.retail_discount)} indent negative />
+              <Row label="Less returns" value={fmt(report.retail_returns)} indent negative />
+              <Row label="Total retail sales" value={fmt(report.retail_total)} />
+
+              {/* Totals */}
+              <Row label="Total sales before taxes" value={fmt(report.subtotal)} bold />
+              <Row label="GST (5%)" value={fmt(report.gst_amount)} indent />
+              <Row label="PST (8%)" value={fmt(report.pst_amount)} indent />
+              <Row
+                label="Total taxes collected"
+                value={fmt(parseFloat(report.gst_amount) + parseFloat(report.pst_amount))}
+                indent
+              />
+
+              {/* Below-the-line adjustments — match Milano structure */}
+              <Row label="Gift cards" value={fmt(report.gift_card_total)} />
+              <Row label="Less on account sales" value={fmt(report.on_account_sales)} negative />
+              <Row label="Plus on account payments" value={fmt(report.on_account_payments)} />
+
+              <Row label="Grand total" value={fmt(report.total)} bold />
             </Section>
 
             {/* By provider */}
