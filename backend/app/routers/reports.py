@@ -179,10 +179,21 @@ async def monthly_report(
         ).scalar() or 0
     ))
 
-    # ── On account: no per-transaction ledger yet — placeholder ───────────────
-    # When a dedicated on-account ledger is built (P3-13 adjacent), replace
-    # these with real queries against that table.
-    on_account_sales = Decimal("0")
+    # ── On account sales (payments made via on_account payment method) ───────────
+    on_account_sales = Decimal(str(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(Payment.amount), 0))
+                .join(Sale, Sale.id == Payment.sale_id)
+                .join(TenantPaymentMethod, TenantPaymentMethod.id == Payment.payment_method_id)
+                .where(
+                    *completed,
+                    TenantPaymentMethod.kind == "on_account",
+                )
+            )
+        ).scalar() or 0
+    ))
+    # On account payments received: needs a dedicated ledger — placeholder for now
     on_account_payments = Decimal("0")
 
     # ── By provider (service items only) ─────────────────────────────────────

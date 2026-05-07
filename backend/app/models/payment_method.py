@@ -11,6 +11,7 @@ class PaymentMethodKind(str, enum.Enum):
     card = "card"
     transfer = "transfer"
     other = "other"
+    on_account = "on_account"
 
 
 class TenantPaymentMethod(TenantScopedBase):

@@ -22,7 +22,8 @@ from app.deps import StaffUser
 from app.email import email_cfg_from_row, send_email
 from app.models.appointment import Appointment, AppointmentItem, AppointmentStatus
 from app.models.email_config import TenantEmailConfig
-from app.models.payment_method import TenantPaymentMethod
+from app.models.client import Client
+from app.models.payment_method import PaymentMethodKind, TenantPaymentMethod
 from app.models.promotion import TenantPromotion
 from app.models.retail import RetailItem
 from app.models.retail import RetailStockMovement, StockMovementKind
@@ -466,6 +467,18 @@ async def create_sale(
     # Transition all appointments to completed atomically
     for appt in appts:
         appt.status = AppointmentStatus.completed
+
+    # Adjust client.account_balance for any on-account payments.
+    # On account = client owes the salon → balance decreases (more negative).
+    on_account_total = _money(sum(
+        sp.amount
+        for sp in sale_payments
+        if methods_by_id[sp.payment_method_id].kind == PaymentMethodKind.on_account
+    ))
+    if on_account_total > 0 and primary_appt.client_id:
+        client = await db.get(Client, primary_appt.client_id)
+        if client:
+            client.account_balance = (client.account_balance or Decimal("0")) - on_account_total
 
     await db.commit()
     await db.refresh(sale)
