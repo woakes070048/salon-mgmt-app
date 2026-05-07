@@ -280,6 +280,16 @@ export default function AppShell() {
           </div>
         )}
 
+        {/* Current user identity */}
+        {sidebarOpen && user && (
+          <div className="border-t px-3 py-2.5">
+            {user.display_name && (
+              <p className="text-xs font-medium text-foreground truncate">{user.display_name}</p>
+            )}
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          </div>
+        )}
+
         {/* Footer — toggle + language + sign out */}
         <div className="border-t p-2 flex items-center justify-between gap-1">
           <button

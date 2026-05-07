@@ -273,7 +273,12 @@ export default function MyRequestsPage() {
       <header className="border-b bg-background px-6 py-4 flex items-center justify-between">
         <img src="/salon-lyol-logo.png" className="h-32 w-auto" alt="Salon Lyol" />
         <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <div className="text-right">
+            {user?.display_name && (
+              <p className="text-sm font-medium">{user.display_name}</p>
+            )}
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+          </div>
           <Button variant="ghost" size="sm" onClick={logout}>
             <LogOut className="h-4 w-4 mr-1.5" />
             {t('nav.sign_out')}

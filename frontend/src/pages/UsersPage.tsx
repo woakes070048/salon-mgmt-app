@@ -302,14 +302,18 @@ function UserRow({ user }: { user: AdminUser }) {
               : <UserIcon size={14} className="text-muted-foreground flex-shrink-0" />
             }
             <div>
-              <p className="text-sm font-medium">{user.email}</p>
               {(user.first_name || user.last_name) ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-medium">
                   {[user.first_name, user.last_name].filter(Boolean).join(' ')}
                 </p>
               ) : user.client_name ? (
-                <p className="text-xs text-muted-foreground">{user.client_name}</p>
-              ) : null}
+                <p className="text-sm font-medium">{user.client_name}</p>
+              ) : (
+                <p className="text-sm font-medium">{user.email}</p>
+              )}
+              {(user.first_name || user.last_name || user.client_name) && (
+                <p className="text-xs text-muted-foreground">{user.email}</p>
+              )}
             </div>
           </div>
         </td>

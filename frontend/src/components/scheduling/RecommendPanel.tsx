@@ -97,7 +97,7 @@ export default function RecommendPanel({
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        Suggested slots
+        Suggested slots — {new Date(desiredDate + 'T12:00:00').toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}
       </p>
 
       <div className="space-y-2">

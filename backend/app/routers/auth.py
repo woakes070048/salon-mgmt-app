@@ -38,6 +38,7 @@ class MeResponse(BaseModel):
     role: str
     tenant_id: str
     language_preference: str
+    display_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -228,14 +229,33 @@ async def reset_password(
     await db.commit()
 
 
+def _display_name(user: User) -> str | None:
+    parts = [user.first_name, user.last_name]
+    name = " ".join(p for p in parts if p)
+    return name or None
+
+
 @router.get("/me", response_model=MeResponse)
-async def me(current_user: CurrentUser) -> MeResponse:
+async def me(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]) -> MeResponse:
+    display = _display_name(current_user)
+    # For guests, fall back to their linked client name
+    if not display and current_user.role == UserRole.guest:
+        linked = (await db.execute(
+            select(Client).where(
+                Client.user_id == current_user.id,
+                Client.tenant_id == current_user.tenant_id,
+                Client.is_active == True,  # noqa: E712
+            )
+        )).scalar_one_or_none()
+        if linked:
+            display = " ".join(p for p in [linked.first_name, linked.last_name] if p) or None
     return MeResponse(
         id=str(current_user.id),
         email=current_user.email,
         role=current_user.role.value,
         tenant_id=str(current_user.tenant_id),
         language_preference=current_user.language_preference or "en",
+        display_name=display,
     )
 
 
@@ -261,6 +281,7 @@ async def update_me(
         role=current_user.role.value,
         tenant_id=str(current_user.tenant_id),
         language_preference=current_user.language_preference,
+        display_name=_display_name(current_user),
     )
 
 
