@@ -445,7 +445,7 @@ function CompensationTab({ provider }: { provider: ProviderDetail }) {
 
   const mutation = useMutation({
     mutationFn: () => updateProvider(provider.id, {
-      pay_type: payType || null,
+      pay_type: payType,  // "" means "clear to N.A." — backend handles it
       pay_amount: payAmount ? parseFloat(payAmount) : null,
       hourly_minimum: hourlyMin ? parseFloat(hourlyMin) : null,
       vacation_pct: vacationPct ? parseFloat(vacationPct) : null,

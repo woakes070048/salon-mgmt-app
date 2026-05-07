@@ -790,10 +790,13 @@ async def update_provider(
     if body.sin is not None:
         p.sin_encrypted = body.sin
     if body.pay_type is not None:
-        try:
-            p.pay_type = PayType(body.pay_type)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid pay_type")
+        if body.pay_type == "":
+            p.pay_type = None  # explicitly clear — N.A.
+        else:
+            try:
+                p.pay_type = PayType(body.pay_type)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid pay_type")
     if body.pay_amount is not None:
         p.pay_amount = body.pay_amount
     if body.hourly_minimum is not None:
