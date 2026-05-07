@@ -110,9 +110,13 @@ function buildEmailBody(opts: {
   if (staff.length) {
     lines.push('')
     lines.push('@STAFF')
-    staff.forEach((s, i) => {
-      if (i > 0) lines.push('')
-      lines.push(generatePayLine(s))
+    let firstStaffWritten = false
+    staff.forEach(s => {
+      const line = generatePayLine(s)
+      if (!line) return
+      if (firstStaffWritten) lines.push('')
+      lines.push(line)
+      firstStaffWritten = true
     })
   }
 
