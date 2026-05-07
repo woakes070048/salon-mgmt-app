@@ -54,7 +54,8 @@ SERVICE_CODE_MAP: dict[str, str] = {
     "EXT":     "EXT",      # Hair Extensions
     "CCO":     "CCR",      # Colour Correction
     "TRE 1":   "MLB",      # Treatments 1 → Milbon Treatment
-    # PERM and REDO have no catalog service — left unmapped (skipped on import)
+    "REDO":    "REDO",     # Redo — complimentary, $0, tracked for quality metrics
+    # PERM has no catalog service — left unmapped (skipped on import)
 }
 
 # ---------------------------------------------------------------------------
