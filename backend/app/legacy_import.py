@@ -44,8 +44,17 @@ SERVICE_CODE_MAP: dict[str, str] = {
     "FRINGE":  "FRG",
     "HBWHC":   "BOT",
     "HBWOHC":  "BOTNHC",
+    "HBE":     "BOT",      # Hair Botox Express → closest match
     "CON":     "con",
     "CAC":     "cac",
+    "SHTF":    "HTF",      # Heat Tool Finish
+    "SAS":     "BLD",      # Additional styling → Blowdry
+    "SBD5+1":  "BLD",      # Blowdry bundle → Blowdry
+    "SUD":     "UPD",      # Updo
+    "EXT":     "EXT",      # Hair Extensions
+    "CCO":     "CCR",      # Colour Correction
+    "TRE 1":   "MLB",      # Treatments 1 → Milbon Treatment
+    # PERM and REDO have no catalog service — left unmapped (skipped on import)
 }
 
 # ---------------------------------------------------------------------------
