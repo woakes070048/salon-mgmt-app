@@ -55,7 +55,7 @@ SERVICE_CODE_MAP: dict[str, str] = {
     "CCO":     "CCR",      # Colour Correction
     "TRE 1":   "MLB",      # Treatments 1 → Milbon Treatment
     "REDO":    "REDO",     # Redo — complimentary, $0, tracked for quality metrics
-    # PERM has no catalog service — left unmapped (skipped on import)
+    "PERM":    "PERM",     # Perm — variable price, set per booking
 }
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ RECEIPT_SERVICE_MAP: dict[str, str] = {
     "toner/gloss stand alone":          "TNR",
     # These are service-like but have no catalog entry — kept as service kind
     # so they don't inflate retail revenue in reports
-    "perm":                             None,
+    "perm":                             "PERM",
     "redo":                             None,
     "color additional":                 None,
     "bdb reimbursement by house":       None,
