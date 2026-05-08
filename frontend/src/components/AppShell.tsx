@@ -353,7 +353,7 @@ export default function AppShell() {
         </div>
       </nav>
 
-      <div className="flex-1 min-w-0 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-auto">
         <Outlet />
       </div>
     </div>
