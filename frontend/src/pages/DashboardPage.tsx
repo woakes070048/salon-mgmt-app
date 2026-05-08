@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, getISODay } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -8,8 +9,10 @@ import { type Appointment, listAppointments } from '@/api/appointments'
 import { type AppointmentRequest, listAllRequests } from '@/api/appointmentRequests'
 import { listTimeEntries, checkIn, checkOut, type TimeEntry } from '@/api/time_entries'
 import { getOperatingHours } from '@/api/settings'
+import { useAuth } from '@/store/auth'
 import { Button } from '@/components/ui/button'
-import { CalendarDays, ClipboardList, ArrowRight, Clock, LogIn, LogOut } from 'lucide-react'
+import { CalendarDays, ClipboardList, ArrowRight, Clock, LogIn, LogOut, Plus } from 'lucide-react'
+import ManualTimeEntryDialog from '@/components/ManualTimeEntryDialog'
 
 const APPT_STATUS_DOT: Record<Appointment['status'], string> = {
   confirmed:   'bg-blue-400',
@@ -198,7 +201,10 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { locale } = useDateLocale()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin'
   const today = format(new Date(), 'yyyy-MM-dd')
+  const [addingEntry, setAddingEntry] = useState(false)
 
   const { data: appointments = [] } = useQuery({
     queryKey: ['appointments', today],
@@ -349,12 +355,31 @@ export default function DashboardPage() {
 
         {/* Staff clock-in */}
         <div className="bg-white border rounded-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b">
-            <Clock size={14} className="text-muted-foreground" />
-            <h2 className="text-sm font-medium">{t('dashboard.staff_attendance')}</h2>
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-muted-foreground" />
+              <h2 className="text-sm font-medium">{t('dashboard.staff_attendance')}</h2>
+            </div>
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => setAddingEntry(true)}
+              >
+                <Plus size={12} className="mr-1" />
+                {t('dashboard.add_time_entry')}
+              </Button>
+            )}
           </div>
           <StaffClockWidget providers={scheduledProviders} entries={timeEntries} today={today} />
         </div>
+
+        <ManualTimeEntryDialog
+          open={addingEntry}
+          onClose={() => setAddingEntry(false)}
+          defaultDate={today}
+        />
 
       </div>
     </div>

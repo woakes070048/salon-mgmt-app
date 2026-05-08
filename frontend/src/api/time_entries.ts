@@ -23,3 +23,16 @@ export function checkIn(provider_id: string): Promise<TimeEntry> {
 export function checkOut(entry_id: string): Promise<TimeEntry> {
   return api.post(`/time-entries/${entry_id}/check-out`, {})
 }
+
+export function adminCreateEntry(
+  provider_id: string,
+  check_in_at: string,
+  check_out_at: string | null,
+  notes: string | null,
+): Promise<TimeEntry> {
+  return api.post('/time-entries', { provider_id, check_in_at, check_out_at, notes })
+}
+
+export function deleteEntry(entry_id: string): Promise<void> {
+  return api.delete(`/time-entries/${entry_id}`)
+}

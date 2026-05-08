@@ -40,6 +40,7 @@ class TimeEntryOut(BaseModel):
 class CheckInBody(BaseModel):
     provider_id: str
     check_in_at: datetime | None = None   # defaults to now()
+    check_out_at: datetime | None = None  # optional — set immediately for manual entries
     notes: str | None = None
 
 
@@ -156,6 +157,7 @@ async def check_in(
         provider_id=provider_id,
         date=work_date,
         check_in_at=check_in_time,
+        check_out_at=body.check_out_at,
         notes=body.notes,
         created_by_user_id=current_user.id,
     )
