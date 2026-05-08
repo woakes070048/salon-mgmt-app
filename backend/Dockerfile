@@ -11,6 +11,7 @@ RUN uv sync --no-dev --frozen
 
 # Application code, migrations, Alembic config, and scripts
 COPY backend/app/ app/
+COPY backend/briefing_engine/ briefing_engine/
 COPY migrations/ migrations/
 COPY alembic.ini .
 COPY scripts/seed.py scripts/seed.py
