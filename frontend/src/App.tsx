@@ -1,5 +1,29 @@
+import { Component, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '@/store/auth'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-muted/30 p-8">
+          <div className="bg-white border border-destructive/30 rounded-lg p-6 max-w-lg w-full space-y-3">
+            <p className="font-semibold text-destructive">Something went wrong</p>
+            <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted p-3 rounded">
+              {(this.state.error as Error).message}
+              {'\n\n'}
+              {(this.state.error as Error).stack?.slice(0, 600)}
+            </pre>
+            <button className="text-sm underline" onClick={() => window.location.reload()}>Reload</button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import AppShell from '@/components/AppShell'
 import LandingPage from '@/pages/LandingPage'
 import LoginPage from '@/pages/LoginPage'
@@ -43,6 +67,7 @@ function RequireGuest({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
@@ -84,5 +109,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </ErrorBoundary>
   )
 }
