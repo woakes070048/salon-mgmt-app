@@ -327,7 +327,7 @@ export default function PayrollReportPage() {
   const staff = editableLines.filter(l => !l.is_owner)
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="h-full overflow-auto bg-muted/30">
       <header className="bg-white border-b px-6 py-3 flex items-center gap-4">
         <h1 className="font-semibold text-base">{t('reports.payroll_title')}</h1>
         <span className="text-sm text-muted-foreground">Paytrak</span>
