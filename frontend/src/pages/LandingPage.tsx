@@ -36,7 +36,7 @@ export default function LandingPage() {
       />
 
       {/* Top brand bar */}
-      <header className="relative z-20 px-6 sm:px-10 py-6 flex items-center justify-between">
+      <header className="relative z-20 px-6 sm:px-10 py-6 flex items-center justify-end">
         <Link
           to="/login"
           className="text-xs tracking-widest uppercase font-medium text-white border border-white/50 rounded-sm px-5 py-2 hover:bg-white hover:text-neutral-900 transition-colors"
