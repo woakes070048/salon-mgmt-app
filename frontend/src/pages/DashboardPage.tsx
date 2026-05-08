@@ -314,7 +314,7 @@ export default function DashboardPage() {
               <CalendarDays size={14} />
               {t('dashboard.providers_working')}
             </div>
-            <p className="text-3xl font-semibold">{providerSet.size}</p>
+            <p className="text-3xl font-semibold">{scheduledProviders.length}</p>
             <p className="text-xs text-muted-foreground mt-1">{t('dashboard.scheduled_today')}</p>
           </button>
         </div>
