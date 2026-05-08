@@ -88,6 +88,11 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 
 ## What's Built
 
+### Home Dashboard
+- Post-login landing page with today's appointment count, pending request count, and quick-action buttons
+- Provider-scoped view: stylists see only their own appointments; admins without a linked provider see all staff
+- Salon closed indicator when operating hours mark the day off
+
 ### Appointment Book
 - Interactive drag-and-drop grid with multi-provider columns
 - Multi-service appointments — appointment is a container, items are individual services per provider
@@ -207,11 +212,11 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 | Metric | Count |
 |--------|-------|
-| **Frontend** (TypeScript / React) | ~17,900 lines · 79 files |
-| **Backend** (Python / FastAPI) | ~14,100 lines · 73 files |
+| **Frontend** (TypeScript / React) | ~18,200 lines · 80 files |
+| **Backend** (Python / FastAPI) | ~14,500 lines · 82 files |
 | **Database migrations** (Alembic) | ~3,000 lines · 52 migrations |
-| **Total source** | **~35,000 lines** |
-| **Git commits** | 354 |
+| **Total source** | **~35,700 lines** |
+| **Git commits** | 358 |
 | **API endpoints** | ~90 |
 | **Database entities** | 24 core models |
 

@@ -7,6 +7,7 @@ export interface MeResponse {
   tenant_id: string
   language_preference: string
   display_name: string | null
+  provider_id: string | null
 }
 
 export async function login(email: string, password: string): Promise<MeResponse> {

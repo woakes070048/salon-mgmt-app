@@ -15,6 +15,7 @@ from app.database import get_db
 from app.deps import CurrentUser
 from app.email import email_cfg_from_row, send_password_reset_email
 from app.models.client import Client
+from app.models.provider import Provider
 from app.models.email_config import TenantEmailConfig
 from app.models.tenant import Tenant
 from app.models.user import LoginLog, PasswordResetToken, User, UserRole
@@ -39,6 +40,7 @@ class MeResponse(BaseModel):
     tenant_id: str
     language_preference: str
     display_name: str | None = None
+    provider_id: str | None = None   # set if this user is a provider
 
     model_config = {"from_attributes": True}
 
@@ -235,6 +237,13 @@ def _display_name(user: User) -> str | None:
     return name or None
 
 
+async def _provider_id_for_user(user_id: uuid.UUID, tenant_id: uuid.UUID, db: AsyncSession) -> str | None:
+    row = (await db.execute(
+        select(Provider.id).where(Provider.user_id == user_id, Provider.tenant_id == tenant_id)
+    )).scalar_one_or_none()
+    return str(row) if row else None
+
+
 @router.get("/me", response_model=MeResponse)
 async def me(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]) -> MeResponse:
     display = _display_name(current_user)
@@ -249,6 +258,7 @@ async def me(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_
         )).scalar_one_or_none()
         if linked:
             display = " ".join(p for p in [linked.first_name, linked.last_name] if p) or None
+    provider_id = await _provider_id_for_user(current_user.id, current_user.tenant_id, db)
     return MeResponse(
         id=str(current_user.id),
         email=current_user.email,
@@ -256,6 +266,7 @@ async def me(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_
         tenant_id=str(current_user.tenant_id),
         language_preference=current_user.language_preference or "en",
         display_name=display,
+        provider_id=provider_id,
     )
 
 
@@ -275,6 +286,7 @@ async def update_me(
     current_user.language_preference = body.language_preference
     await db.commit()
     await db.refresh(current_user)
+    provider_id = await _provider_id_for_user(current_user.id, current_user.tenant_id, db)
     return MeResponse(
         id=str(current_user.id),
         email=current_user.email,
@@ -282,6 +294,7 @@ async def update_me(
         tenant_id=str(current_user.tenant_id),
         language_preference=current_user.language_preference,
         display_name=_display_name(current_user),
+        provider_id=provider_id,
     )
 
 

@@ -6,7 +6,7 @@
 
 ## Phase 1 — Core Appointment Book
 
-### P1-0 · App shell and home dashboard
+### P1-0 · App shell and home dashboard · ✅ Complete
 
 Replace the current pattern (login → straight to appointment book) with a proper app shell that persists across all staff pages.
 
@@ -29,13 +29,13 @@ After login, staff land on a simple dashboard showing:
 - Remove the header + sign-out button from `AppointmentBookPage` (shell handles it)
 - `RequireStaff` wraps the shell, not individual routes
 
-### P1-1 · Convert request → appointment
+### P1-1 · Convert request → appointment · ✅ Complete
 Staff review an incoming booking request and convert it into a confirmed appointment, mapping each requested service/provider to real catalog entries and setting the confirmed time slot.
 
 - Backend: `POST /appointment-requests/{id}/convert` — creates `Client` (or links existing), creates `Appointment` + `AppointmentItem`(s), marks request as `converted`
 - Frontend: "Convert to appointment" action in `RequestsPage` — dialog to map items to real services/providers and pick a time; navigates to appointment book on success
 
-### P1-2 · Provider schedule versioning and historical locking
+### P1-2 · Provider schedule versioning and historical locking · ✅ Complete
 
 Default weekly schedules already exist in the data model, but the current implementation overwrites history when a schedule changes. This item makes the schedule system behave correctly.
 
@@ -58,7 +58,7 @@ Frontend (`StaffSchedulePage`):
 
 No schema migration required — `ProviderSchedule.effective_from` and `effective_to` already exist.
 
-### P1-3 · Client card
+### P1-3 · Client card · ✅ Complete
 
 View a client's full profile directly from the appointment book — without leaving the grid.
 
@@ -71,16 +71,16 @@ View a client's full profile directly from the appointment book — without leav
 
 Accessible by clicking the client name on any appointment block on the grid. Opens as a slide-over panel (not a full page navigation).
 
-### P1-4 · Add / remove services on an appointment
+### P1-4 · Add / remove services on an appointment · ✅ Complete
 From the appointment book, staff can add new `AppointmentItem`(s) to an existing appointment, or remove items that are no longer happening — without having to delete and recreate the whole appointment.
 
 - Add: opens the booking form pre-scoped to the existing appointment's client and date
 - Remove: confirmation prompt then soft-delete (status → `cancelled`) on the item
 
-### P1-5 · Creative login / landing page
+### P1-5 · Creative login / landing page · ✅ Complete
 Replace the plain login page with a branded, visually engaging entry point appropriate for a premium Toronto salon. Should work well as the public-facing first impression for guests arriving to submit a booking request.
 
-### P1-8 · Show service times in client Appointments tab
+### P1-8 · Show service times in client Appointments tab · ✅ Complete
 
 The Appointments tab on the client profile (Clients page) shows each service with the date but not the specific start time. Add the start time to each service line so staff can see exactly when each service is/was scheduled.
 
@@ -89,7 +89,7 @@ The Appointments tab on the client profile (Clients page) shows each service wit
 - Backend: add `start_time: str` to the `VisitItem` model in `clients.py` and populate it from `AppointmentItem.start_time`
 - Frontend: display formatted time (e.g. "9:00 AM") alongside service name and provider on each item row
 
-### P1-7 · Delete client
+### P1-7 · Delete client · ✅ Complete
 
 Staff can soft-delete (deactivate) a client record from the Clients page. A deleted client's history is preserved for reporting but they no longer appear in search results or the client list.
 
@@ -97,7 +97,7 @@ Staff can soft-delete (deactivate) a client record from the Clients page. A dele
 - Frontend: "Delete client" action in the client detail panel; confirmation dialog before proceeding; removes client from the list on success
 - Guard: prevent deletion if the client has any upcoming (confirmed / in-progress) appointments — return a 409 with a clear message
 
-### P1-6 · Branding configuration
+### P1-6 · Branding configuration · ✅ Complete
 Salon owners can upload a logo and set basic brand colours. Logo appears in the app header, on the login/landing page, and in outbound emails.
 
 - `TenantSettings` entity (or extend `Tenant`): `logo_url`, `primary_colour`, `salon_name_display`
@@ -108,7 +108,7 @@ Salon owners can upload a logo and set basic brand colours. Logo appears in the 
 
 ## Phase 2 — POS, Notifications, and Reporting
 
-### P2-1 · Checkout and payment
+### P2-1 · Checkout and payment · ✅ Complete
 Staff check out a client at the end of their visit and record payment.
 
 - `Sale` + `SaleItem` entities (per the ERM in `docs/reports/reports-annotations.md`)
@@ -118,14 +118,14 @@ Staff check out a client at the end of their visit and record payment.
 - GST and PST tracked per sale (Ontario: 5% + 8%)
 - Checkout initiated from the appointment block on the grid or from client card
 
-### P2-2 · Appointment confirmation notification
+### P2-2 · Appointment confirmation notification · ✅ Complete
 When a booking request is converted to a confirmed appointment, automatically send the client a confirmation via email and/or SMS.
 
 - Message includes: date, time, provider(s), services, salon address, cancellation policy
 - Channel (email / SMS / both) configurable per tenant
 - Triggered by the convert endpoint (P1-1)
 
-### P2-3 · Appointment reminder notifications
+### P2-3 · Appointment reminder notifications · ✅ Complete
 Send the client a reminder before their appointment. Lead time is configurable (e.g., 24 h, 48 h, or a custom number of hours before the appointment start).
 
 - `AppointmentReminder` entity already exists in the schema
@@ -144,14 +144,14 @@ When an appointment that already has a confirmation sent is cancelled by staff, 
 - No new schema fields needed — `confirmation_sent_at` already indicates a confirmation was sent; the cancellation notice is fire-and-forget (no tracking field in v1)
 - Out of scope for v1: SMS channel, re-booking link, per-tenant on/off toggle
 
-### P2-4 · New booking request notification to salon
+### P2-4 · New booking request notification to salon · ✅ Complete
 When a guest submits a booking request via the public form, notify the salon staff by email.
 
 - Notification email includes: guest name, requested date/time, services requested, special notes
 - On/off toggle in tenant settings (default: on)
 - Recipient address(es) configurable in tenant settings
 
-### P2-5 · Monthly sales report
+### P2-5 · Monthly sales report · ✅ Complete
 Comprehensive sales report for any configurable date range (daily, weekly, monthly).
 
 Full spec in `docs/reports/reports-annotations.md`. Key sections:
@@ -168,7 +168,7 @@ Full spec in `docs/reports/reports-annotations.md`. Key sections:
 - Exportable as PDF
 - Key management metric: **Payroll % of Net Sales** (target: visible on report)
 
-### P2-6 · Show sale summary on completed appointment
+### P2-6 · Show sale summary on completed appointment · ✅ Complete
 
 Follow-up to P2-1 (deferred Q3 from `docs/specs/P2-1-checkout-payment.md`). When viewing a completed appointment in `AppointmentDetail`, show the recorded sale: totals (subtotal, GST, PST, tip, total) and the payment breakdown (e.g., "Cash $40 · Visa $33.45").
 
@@ -178,7 +178,7 @@ Follow-up to P2-1 (deferred Q3 from `docs/specs/P2-1-checkout-payment.md`). When
 
 **Receipt layout:** Three zones — **Header** (logo + salon name), **Body** (date/time; per-line service/retail amounts; summary block with Services, Retail, G/C, SubTotal, GST, PST), **Footer** (client first + last name, next appointment date, salon address, phone, email). Options include "Always Email eReceipt" and a default prompt (None / Receipt / eReceipt / Invoice). Our email receipt already covers the body/footer content; this structure is reference if we add a printable/PDF receipt in a future item.
 
-### P2-7 · Edit a completed sale (correct payment methods / splits)
+### P2-7 · Edit a completed sale (correct payment methods / splits) · ✅ Complete
 
 Staff sometimes record the wrong payment method or a bad split (e.g., charged $50 to Visa when it was actually Mastercard). They need to correct the receipt without voiding and re-creating the sale.
 
@@ -189,7 +189,7 @@ Staff sometimes record the wrong payment method or a bad split (e.g., charged $5
 - Backend: `PATCH /sales/{id}/payments` — accepts the new payment list, validates total, writes edit log, replaces payment rows in a transaction.
 - Frontend: "Edit payments" action on the sale summary (P2-6); reuses payment selector from CheckoutPanel.
 
-### P2-8 · End-of-day cash reconciliation
+### P2-8 · End-of-day cash reconciliation · ✅ Complete
 
 Cash is the one payment method that has to physically match a count at the end of the day. Staff need a flow that tracks the running cash position and supports a daily till count with variance.
 
@@ -216,7 +216,7 @@ Cash is the one payment method that has to physically match a count at the end o
 - P2-5 (monthly sales report) — shares the reconciliation period model and petty cash semantics.
 - "Cash" payment method needs to be identifiable across tenant-defined payment methods (use `kind = 'cash'` on the `TenantPaymentMethod` row).
 
-### P2-9 · Tip-as-cashback flow (tips are not salon revenue)
+### P2-9 · Tip-as-cashback flow (tips are not salon revenue) · ✅ Complete
 
 P2-1 currently models tip as part of the sale (`Sale.tip_amount`, included in `total`, payments must cover it). That's the conventional POS model but it's **wrong for Salon Lyol's actual workflow**:
 
@@ -236,7 +236,7 @@ P2-1 currently models tip as part of the sale (`Sale.tip_amount`, included in `t
 
 **Depends on:** revisits P2-1 (`Sale.tip_amount`, `CheckoutPanel`, `POST /sales` total computation). Should land before P2-8 since reconciliation math assumes recorded cash payments equal the cash actually retained.
 
-### P2-10 · Tenant-defined promotions (per-service discount)
+### P2-10 · Tenant-defined promotions (per-service discount) · ✅ Complete
 
 Salons run their own promotions — "Senior Tuesday", "First-time colour", "Stylist's birthday week". Promotions are configured by an admin and applied at checkout to **individual service lines**, not to the sale as a whole.
 

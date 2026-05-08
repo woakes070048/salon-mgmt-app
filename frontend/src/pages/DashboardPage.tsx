@@ -234,19 +234,28 @@ export default function DashboardPage() {
   const todayHours = operatingHours.find(h => h.day_of_week === todayDow)
   const salonClosedToday = todayHours !== undefined && !todayHours.is_open
 
-  const activeAppts = appointments.filter(a => a.status !== 'cancelled' && a.status !== 'no_show')
+  const myProviderId = user?.provider_id ?? null
+
+  // Each user sees only their own appointments. Admins without a linked provider see all.
+  const activeAppts = appointments.filter(a => {
+    if (a.status === 'cancelled' || a.status === 'no_show') return false
+    if (myProviderId) return a.items.some(i => i.provider.id === myProviderId)
+    return true
+  })
   const serviceCount = activeAppts.reduce(
-    (n, a) => n + a.items.filter(i => i.status !== 'cancelled').length, 0
-  )
-  const providerSet = new Set(
-    activeAppts.flatMap(a => a.items.map(i => i.provider.id))
+    (n, a) => n + a.items.filter(i => i.status !== 'cancelled' && (!myProviderId || i.provider.id === myProviderId)).length, 0
   )
 
-  const scheduledProviders = Array.from(
-    new Map(
-      activeAppts.flatMap(a => a.items.map(i => [i.provider.id, i.provider] as [string, { id: string; display_name: string }]))
-    ).values()
-  ).sort((a, b) => a.display_name.localeCompare(b.display_name))
+  const scheduledProviders = myProviderId
+    ? activeAppts.flatMap(a => a.items
+        .filter(i => i.provider.id === myProviderId)
+        .map(i => i.provider)
+      ).filter((p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx)
+    : Array.from(
+        new Map(
+          activeAppts.flatMap(a => a.items.map(i => [i.provider.id, i.provider] as [string, { id: string; display_name: string }]))
+        ).values()
+      ).sort((a, b) => a.display_name.localeCompare(b.display_name))
 
   return (
     <div className="h-full overflow-auto bg-muted/30">
