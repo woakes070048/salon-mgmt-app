@@ -317,8 +317,10 @@ export default function PayrollReportPage() {
     })
   }
 
-  function handlePrint() {
+  function handlePrint(target: 'review' | 'email') {
+    document.body.dataset.printTarget = target
     window.print()
+    delete document.body.dataset.printTarget
   }
 
   const owners = editableLines.filter(l => l.is_owner)
@@ -336,7 +338,7 @@ export default function PayrollReportPage() {
         {/* ── Left: Period + Review ── */}
         <div className="space-y-5">
           {/* Period controls */}
-          <div className="bg-white border rounded-lg p-4 space-y-4">
+          <div data-panel="period" className="bg-white border rounded-lg p-4 space-y-4">
             <h2 className="text-sm font-semibold">{t('reports.pay_period')}</h2>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
@@ -373,10 +375,16 @@ export default function PayrollReportPage() {
 
           {/* Review table */}
           {editableLines.length > 0 && (
-            <div className="bg-white border rounded-lg p-4 space-y-3">
+            <div data-panel="review" className="bg-white border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">{t('reports.review_section')}</h2>
-                <span className="text-xs text-muted-foreground">{t('reports.review_subtitle')}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">{t('reports.review_subtitle')}</span>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => handlePrint('review')}>
+                    <Printer size={12} />
+                    {t('reports.print_pdf')}
+                  </Button>
+                </div>
               </div>
 
               {owners.length > 0 && (
@@ -397,7 +405,7 @@ export default function PayrollReportPage() {
 
         {/* ── Right: Email composer ── */}
         <div className="space-y-5">
-          <div className="bg-white border rounded-lg p-4 space-y-4">
+          <div data-panel="email" className="bg-white border rounded-lg p-4 space-y-4">
             <h2 className="text-sm font-semibold">{t('reports.email_section')}</h2>
 
             <div className="grid grid-cols-2 gap-3">
@@ -429,7 +437,7 @@ export default function PayrollReportPage() {
                 value={footer}
                 onChange={e => setFooter(e.target.value)}
                 rows={4}
-                className="w-full border border-input rounded-md px-3 py-2 text-xs bg-background resize-none font-mono"
+                className="w-full border border-input rounded-md px-3 py-2 text-xs bg-background resize-y font-mono"
               />
             </div>
 
@@ -446,7 +454,7 @@ export default function PayrollReportPage() {
                 value={emailText}
                 onChange={e => setEmailText(e.target.value)}
                 rows={20}
-                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-none font-mono"
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-y font-mono"
               />
             </div>
 
@@ -459,7 +467,7 @@ export default function PayrollReportPage() {
                 <Send size={14} />
                 {sendMutation.isPending ? t('common.sending') : t('reports.send_paytrak')}
               </Button>
-              <Button variant="ghost" onClick={handlePrint} className="gap-2">
+              <Button variant="ghost" onClick={() => handlePrint('email')} className="gap-2">
                 <Printer size={14} />
                 {t('reports.print_pdf')}
               </Button>
@@ -480,9 +488,27 @@ export default function PayrollReportPage() {
       {/* Print styles */}
       <style>{`
         @media print {
-          header, .xl\\:grid-cols-2 > div:first-child > div:first-child, button { display: none !important; }
-          body { background: white; }
-          textarea { border: none; height: auto; overflow: visible; white-space: pre-wrap; font-size: 12px; }
+          body { background: white !important; }
+          header { display: none !important; }
+          button { display: none !important; }
+          textarea {
+            border: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            white-space: pre-wrap !important;
+            font-size: 12px !important;
+            resize: none !important;
+          }
+
+          /* Print review: hide email panel, show review + period */
+          body[data-print-target="review"] [data-panel="email"] { display: none !important; }
+          body[data-print-target="review"] [data-panel="review"] { display: block !important; }
+
+          /* Print email: hide review panel and period controls */
+          body[data-print-target="email"] [data-panel="review"] { display: none !important; }
+          body[data-print-target="email"] [data-panel="period"] { display: none !important; }
+          body[data-print-target="email"] [data-panel="email"] { display: block !important; }
         }
       `}</style>
     </div>
