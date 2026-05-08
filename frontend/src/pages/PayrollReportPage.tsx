@@ -333,9 +333,9 @@ export default function PayrollReportPage() {
         <span className="text-sm text-muted-foreground">Paytrak</span>
       </header>
 
-      <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6 max-w-[1400px]">
+      <div className="p-6 space-y-6 max-w-[1200px]">
 
-        {/* ── Left: Period + Review ── */}
+        {/* ── Top: Period + Review ── */}
         <div className="space-y-5">
           {/* Period controls */}
           <div data-panel="period" className="bg-white border rounded-lg p-4 space-y-4">
@@ -403,8 +403,8 @@ export default function PayrollReportPage() {
           )}
         </div>
 
-        {/* ── Right: Email composer ── */}
-        <div className="space-y-5">
+        {/* ── Bottom: Email composer ── */}
+        <div>
           <div data-panel="email" className="bg-white border rounded-lg p-4 space-y-4">
             <h2 className="text-sm font-semibold">{t('reports.email_section')}</h2>
 
@@ -453,7 +453,7 @@ export default function PayrollReportPage() {
                 ref={emailRef}
                 value={emailText}
                 onChange={e => setEmailText(e.target.value)}
-                rows={20}
+                rows={30}
                 className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-y font-mono"
               />
             </div>
@@ -501,14 +501,16 @@ export default function PayrollReportPage() {
             resize: none !important;
           }
 
-          /* Print review: hide email panel, show review + period */
+          /* Print review: hide email panel */
           body[data-print-target="review"] [data-panel="email"] { display: none !important; }
-          body[data-print-target="review"] [data-panel="review"] { display: block !important; }
 
-          /* Print email: hide review panel and period controls */
+          /* Print email: hide review and period panels */
           body[data-print-target="email"] [data-panel="review"] { display: none !important; }
           body[data-print-target="email"] [data-panel="period"] { display: none !important; }
-          body[data-print-target="email"] [data-panel="email"] { display: block !important; }
+
+          /* Ensure table doesn't clip when printing */
+          body[data-print-target="review"] table { width: 100% !important; }
+          body[data-print-target="review"] input { border: none !important; background: transparent !important; }
         }
       `}</style>
     </div>
