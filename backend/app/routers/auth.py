@@ -1,6 +1,7 @@
 import hashlib
 import random
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
