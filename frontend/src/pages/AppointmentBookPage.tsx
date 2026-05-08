@@ -20,7 +20,8 @@ import ConvertRequestPanel from '@/components/ConvertRequestPanel'
 import ConfirmationDialog from '@/components/appointment-book/ConfirmationDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Eye, EyeOff, Keyboard } from 'lucide-react'
+import { Eye, EyeOff, Keyboard, UserPlus, X } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 // ── Grid geometry (must match TimeGrid constants) ─────────────────────────────
 const SLOT_HEIGHT = 20
@@ -165,12 +166,24 @@ export default function AppointmentBookPage() {
     queryFn: () => listTimeBlocks(date),
   })
 
+  const [pinnedProviderIds, setPinnedProviderIds] = useState<Set<string>>(new Set())
+
+  // Reset pins when the date changes
+  useEffect(() => { setPinnedProviderIds(new Set()) }, [date])
+
   const activeProviders = providers.filter(p => p.has_appointments)
   const workingProviderIds = new Set(schedules.filter(s => s.is_working).map(s => s.provider_id))
   const providersWithAppts = new Set(appointments.flatMap(a => a.items.map(i => i.provider.id)))
-  const visibleProviders = schedules.length === 0
+  const autoVisible = schedules.length === 0
     ? activeProviders
     : activeProviders.filter(p => workingProviderIds.has(p.id) || providersWithAppts.has(p.id))
+  const visibleProviders = [
+    ...autoVisible,
+    ...activeProviders.filter(p => pinnedProviderIds.has(p.id) && !autoVisible.some(v => v.id === p.id)),
+  ]
+  const unscheduledProviders = activeProviders.filter(
+    p => !workingProviderIds.has(p.id) && !providersWithAppts.has(p.id)
+  )
   const displayDate = parseISO(date + 'T12:00:00')
 
   const prev  = useCallback(() => setDate(format(subDays(displayDate, 1), 'yyyy-MM-dd')), [displayDate])
@@ -302,6 +315,45 @@ export default function AppointmentBookPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Pinned (unscheduled) provider badges */}
+          {[...pinnedProviderIds].map(id => {
+            const p = activeProviders.find(x => x.id === id)
+            if (!p) return null
+            return (
+              <span key={id} className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 border border-amber-200 rounded px-2 py-1">
+                {p.display_name}
+                <button onClick={() => setPinnedProviderIds(prev => { const s = new Set(prev); s.delete(id); return s })} className="hover:text-amber-900">
+                  <X size={10} />
+                </button>
+              </span>
+            )
+          })}
+
+          {/* Add unscheduled staff */}
+          {unscheduledProviders.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="text-muted-foreground gap-1.5">
+                  <UserPlus size={14} />
+                  {t('appt.add_staff')}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-52 p-2">
+                <p className="text-xs font-medium text-muted-foreground px-2 pb-2">{t('appt.not_scheduled')}</p>
+                {unscheduledProviders.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setPinnedProviderIds(prev => new Set([...prev, p.id]))}
+                    disabled={pinnedProviderIds.has(p.id)}
+                    className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {p.display_name}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
+
           <Button
             variant="outline"
             size="sm"

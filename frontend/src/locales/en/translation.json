@@ -159,6 +159,8 @@
     "hide_cancelled": "Hide cancelled & no-show",
     "show_cancelled": "Show cancelled & no-show",
     "new_button": "+ New",
+    "add_staff": "Add staff",
+    "not_scheduled": "Not scheduled today",
     "shortcuts_title": "Keyboard shortcuts",
     "shortcut_prev_day": "Previous day",
     "shortcut_next_day": "Next day",

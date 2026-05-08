@@ -159,6 +159,8 @@
     "hide_cancelled": "Masquer annulés et absents",
     "show_cancelled": "Afficher annulés et absents",
     "new_button": "+ Nouveau",
+    "add_staff": "Ajouter personnel",
+    "not_scheduled": "Non planifié aujourd'hui",
     "shortcuts_title": "Raccourcis clavier",
     "shortcut_prev_day": "Jour précédent",
     "shortcut_next_day": "Jour suivant",
