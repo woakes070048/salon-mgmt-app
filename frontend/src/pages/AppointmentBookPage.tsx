@@ -199,10 +199,10 @@ export default function AppointmentBookPage() {
         !dismissedProviderIds.has(p.id)
       )
 
-  const visibleProviders = [
-    ...autoVisible,
-    ...activeProviders.filter(p => pinnedProviderIds.has(p.id) && !autoVisible.some(v => v.id === p.id)),
-  ]
+  // Preserve booking_order — activeProviders is already sorted by it
+  const visibleProviders = activeProviders.filter(p =>
+    autoVisible.some(v => v.id === p.id) || pinnedProviderIds.has(p.id)
+  )
   const unscheduledProviders = activeProviders.filter(
     p => !autoVisible.some(v => v.id === p.id) && !pinnedProviderIds.has(p.id)
   )
