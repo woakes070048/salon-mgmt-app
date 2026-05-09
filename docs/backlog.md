@@ -932,35 +932,13 @@ The `developer` and `claude_code` briefings use a simple Cloud Scheduler → `PO
 
 ## Parallel Run Reconciliation Tasks
 
-### PR-1 · Sales reconciliation — WALK_IN retail gap ⚠️ HIGH PRIORITY
+### PR-1 · Sales reconciliation — WALK_IN retail gap · ✅ Complete
 
-The Milano import skips all `WALK_IN` receipts entirely (`legacy_import.py` line 476). For March 2026 this means **$960.40 in retail sales across 14 receipts** is absent from SalonOS, producing the $869.20 gap between SalonOS ($1,901.93) and Milano net retail ($2,771.13). The remaining $91.20 delta is likely duplicate items from a re-import run.
+Fixed in `legacy_import.py` (commit `003685e`): WALK_IN receipts are now imported as completed sales linked to a "Walk-In" placeholder client, with no appointment record. Import re-run confirmed by Freddy (2026-05-09).
 
-**What to fix:**
+### PR-2 · Payroll reconciliation · ✅ Complete
 
-Import WALK_IN receipts as completed sales with no client linkage (`client_id = NULL`). Create a "Walk-In" provider/staff assignment (already supported via `house_id`). The sale exists for revenue reporting; it just has no client card.
-
-**Changes needed in `legacy_import.py`:**
-- Remove the `WALK_IN` early-continue at line 476
-- When `client_code == "WALK_IN"`: set `client_id = None`, skip appointment creation, create only the sale + sale items
-- Re-run the import for March (and all months) to backfill missing sales
-
-**Verification:** After re-import, SalonOS retail for March should read $2,771.13 (net of the -$45.60 WALK02 return, which is already in SalonOS).
-
-### PR-2 · Payroll reconciliation ⚠️ HIGH PRIORITY
-
-Validate that SalonOS payroll figures match Milano for the parallel run period. Milan tracks commission per staff per receipt (Comstaff1/Comstaff2 columns). SalonOS derives payroll from salary + tip calculations.
-
-**What to compare:**
-- Staff commission totals per provider per month (Milano: Comstaff1 × Amount, summed per staff code)
-- SalonOS: GET /payroll?month=YYYY-MM (monthly payroll report)
-- Cross-reference: provider code mapping (Milano staff codes → SalonOS provider names)
-
-**Known difference to account for:** Milano commission model (% of service revenue) vs SalonOS salary model. The parallel run goal is confirming gross revenue attribution per staff is consistent, not that the payment method matches.
-
-**Input needed:** Milano payroll/commission export for the parallel run month (same format as the receipts CSV — Comstaff1/Comstaff2 columns are the commission %).
-
-**Depends on:** PR-1 (WALK_IN import fix) — walk-in sales have staff attribution and affect commission totals.
+Figures reconcile between SalonOS and Milano for the parallel run period. Confirmed by Freddy (2026-05-09). Depends on PR-1 (complete).
 
 ---
 
