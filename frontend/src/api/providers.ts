@@ -157,6 +157,9 @@ export interface PayrollOut {
   month: number
   pay_type: string | null
   scheduled_hours: number
+  actual_hours: number
+  hours_source: 'actual' | 'scheduled'
+  payroll_hours: number
   styling_revenue: number
   styling_item_count: number
   colour_revenue: number

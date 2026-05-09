@@ -33,6 +33,23 @@ export function adminCreateEntry(
   return api.post('/time-entries', { provider_id, check_in_at, check_out_at, notes })
 }
 
+export function patchEntry(
+  entry_id: string,
+  check_in_at: string,
+  check_out_at: string | null,
+  notes: string | null,
+): Promise<TimeEntry> {
+  return api.patch(`/time-entries/${entry_id}`, { check_in_at, check_out_at, notes })
+}
+
 export function deleteEntry(entry_id: string): Promise<void> {
   return api.delete(`/time-entries/${entry_id}`)
+}
+
+export function listEntriesForPeriod(
+  provider_id: string,
+  date_from: string,
+  date_to: string,
+): Promise<TimeEntry[]> {
+  return api.get(`/time-entries?provider_id=${provider_id}&date_from=${date_from}&date_to=${date_to}`)
 }

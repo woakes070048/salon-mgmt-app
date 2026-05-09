@@ -156,6 +156,72 @@ function StaffClockWidget({ providers, entries, today }: StaffClockWidgetProps) 
   )
 }
 
+// ── My clock card (provider self-check-in) ────────────────────────────────────
+
+function MyClockCard({ providerId, entries, today }: {
+  providerId: string
+  entries: TimeEntry[]
+  today: string
+}) {
+  const qc = useQueryClient()
+  const { t } = useTranslation()
+
+  const openEntry = entries.find(e => e.provider_id === providerId && e.check_out_at === null)
+  const doneEntry = entries.find(e => e.provider_id === providerId && e.check_out_at !== null)
+  const active = openEntry ?? doneEntry
+
+  const checkInMut = useMutation({
+    mutationFn: () => checkIn(providerId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['time-entries', today] }),
+  })
+  const checkOutMut = useMutation({
+    mutationFn: () => checkOut(openEntry!.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['time-entries', today] }),
+  })
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3">
+      <div>
+        {active ? (
+          <p className="text-sm text-muted-foreground">
+            {t('dashboard.clock_in_at', {
+              time: new Date(active.check_in_at).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }),
+            })}
+            {active.check_out_at && (
+              <> · {t('dashboard.clock_out_at', {
+                time: new Date(active.check_out_at).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }),
+              })} · {active.hours}h</>
+            )}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('dashboard.not_clocked_in')}</p>
+        )}
+      </div>
+      <div>
+        {!openEntry && !doneEntry && (
+          <Button size="sm" onClick={() => checkInMut.mutate()} disabled={checkInMut.isPending}>
+            <LogIn size={13} className="mr-1.5" /> {t('dashboard.clock_in')}
+          </Button>
+        )}
+        {openEntry && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+            onClick={() => checkOutMut.mutate()}
+            disabled={checkOutMut.isPending}
+          >
+            <LogOut size={13} className="mr-1.5" /> {t('dashboard.clock_out')}
+          </Button>
+        )}
+        {!openEntry && doneEntry && (
+          <span className="text-xs text-muted-foreground">{t('dashboard.status_done')}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Pending requests ──────────────────────────────────────────────────────────
 
 function PendingRequests({ requests }: { requests: AppointmentRequest[] }) {
@@ -367,7 +433,9 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <div className="flex items-center gap-2">
               <Clock size={14} className="text-muted-foreground" />
-              <h2 className="text-sm font-medium">{t('dashboard.staff_attendance')}</h2>
+              <h2 className="text-sm font-medium">
+                {isAdmin ? t('dashboard.staff_attendance') : t('dashboard.my_attendance')}
+              </h2>
             </div>
             {isAdmin && (
               <Button
@@ -381,7 +449,10 @@ export default function DashboardPage() {
               </Button>
             )}
           </div>
-          <StaffClockWidget providers={scheduledProviders} entries={timeEntries} today={today} />
+          {!isAdmin && user?.provider_id
+            ? <MyClockCard providerId={user.provider_id} entries={timeEntries} today={today} />
+            : <StaffClockWidget providers={scheduledProviders} entries={timeEntries} today={today} />
+          }
         </div>
 
         <ManualTimeEntryDialog

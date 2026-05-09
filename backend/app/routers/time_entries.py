@@ -100,16 +100,32 @@ async def _load(entry_id: str, tenant_id: uuid.UUID, db: AsyncSession) -> StaffT
 async def list_entries(
     current_user: StaffUser,
     db: Annotated[AsyncSession, Depends(get_db)],
-    date: date = Query(default_factory=lambda: datetime.now(timezone.utc).date()),
+    date: date | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    provider_id: str | None = Query(default=None),
 ) -> list[TimeEntryOut]:
+    from app.models.user import UserRole
+    tid = current_user.tenant_id
+    is_admin = current_user.role in (UserRole.tenant_admin, UserRole.super_admin)
+
+    filters = [StaffTimeEntry.tenant_id == tid]
+
+    if provider_id:
+        if not is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required to filter by provider")
+        filters.append(StaffTimeEntry.provider_id == uuid.UUID(provider_id))
+
+    if date_from and date_to:
+        filters.append(StaffTimeEntry.date >= date_from)
+        filters.append(StaffTimeEntry.date <= date_to)
+    else:
+        target = date or datetime.now(timezone.utc).date()
+        filters.append(StaffTimeEntry.date == target)
+
     entries = (
         await db.execute(
-            select(StaffTimeEntry)
-            .where(
-                StaffTimeEntry.tenant_id == current_user.tenant_id,
-                StaffTimeEntry.date == date,
-            )
-            .order_by(StaffTimeEntry.check_in_at)
+            select(StaffTimeEntry).where(*filters).order_by(StaffTimeEntry.date, StaffTimeEntry.check_in_at)
         )
     ).scalars().all()
     return [await _serialize(e, db) for e in entries]

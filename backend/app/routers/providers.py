@@ -205,6 +205,9 @@ class ProviderPayrollLine(BaseModel):
     pay_type: str | None
     pay_basis: str        # "commission" | "hourly" | "salary" | "n/a"
     scheduled_hours: float
+    actual_hours: float        # sum of checked-out time entries; 0 if none recorded
+    hours_source: str          # "actual" | "scheduled"
+    payroll_hours: float       # whichever is used for the floor calculation
     hourly_minimum: float | None
     hourly_floor_amount: float
     service_commission: float
@@ -413,9 +416,31 @@ async def _calc_payroll_line(
                 scheduled_hours += _hours(srow.start_time, srow.end_time)
         cur += td(days=1)
 
+    # ── Actual hours from time entries ────────────────────────────────────────
+    from app.models.staff_time_entry import StaffTimeEntry
+    entry_rows = (
+        await db.execute(
+            select(StaffTimeEntry).where(
+                StaffTimeEntry.tenant_id == tid,
+                StaffTimeEntry.provider_id == pid,
+                StaffTimeEntry.date >= period_start,
+                StaffTimeEntry.date <= period_end,
+                StaffTimeEntry.check_out_at.isnot(None),
+            )
+        )
+    ).scalars().all()
+    actual_hours = sum(
+        (e.check_out_at - e.check_in_at).total_seconds() / 3600
+        for e in entry_rows
+    )
+    actual_hours = round(actual_hours, 2)
+    has_entries = len(entry_rows) > 0
+    payroll_hours = actual_hours if has_entries else scheduled_hours
+    hours_source = "actual" if has_entries else "scheduled"
+
     # ── Pay basis ─────────────────────────────────────────────────────────────
     hourly_min = float(p.hourly_minimum or 0)
-    hourly_floor = round(scheduled_hours * hourly_min, 2)
+    hourly_floor = round(payroll_hours * hourly_min, 2)
     vacation_pct_val = float(p.vacation_pct or 0)
     pay_type_val = p.pay_type.value if p.pay_type else None
 
@@ -445,6 +470,9 @@ async def _calc_payroll_line(
         pay_type=pay_type_val,
         pay_basis=pay_basis,
         scheduled_hours=round(scheduled_hours, 2),
+        actual_hours=actual_hours,
+        hours_source=hours_source,
+        payroll_hours=round(payroll_hours, 2),
         hourly_minimum=hourly_min if hourly_min else None,
         hourly_floor_amount=hourly_floor,
         service_commission=round(float(commission_on_services), 2),
@@ -940,8 +968,11 @@ class PayrollOut(BaseModel):
     month: int
     pay_type: str | None
 
-    # Scheduled hours
+    # Hours
     scheduled_hours: float
+    actual_hours: float
+    hours_source: str   # "actual" | "scheduled"
+    payroll_hours: float
 
     # Service revenue breakdown
     styling_revenue: float
@@ -1010,6 +1041,9 @@ async def get_payroll(
         month=month,
         pay_type=line.pay_type,
         scheduled_hours=line.scheduled_hours,
+        actual_hours=line.actual_hours,
+        hours_source=line.hours_source,
+        payroll_hours=line.payroll_hours,
         styling_revenue=line.styling_revenue,
         styling_item_count=line.styling_item_count,
         colour_revenue=line.colour_revenue,

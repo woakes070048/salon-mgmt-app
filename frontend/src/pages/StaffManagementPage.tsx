@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, UserCircle2, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, UserCircle2, CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   listAllProviders,
@@ -12,6 +12,13 @@ import {
   type ProviderDetail,
   type CommissionTier,
 } from '@/api/providers'
+import {
+  listEntriesForPeriod,
+  adminCreateEntry,
+  patchEntry,
+  deleteEntry,
+  type TimeEntry,
+} from '@/api/time_entries'
 import { listUsers } from '@/api/admin'
 import { getWeeklySchedules, setWeeklySchedule, type DayHours } from '@/api/schedules'
 import { getOperatingHours, type OperatingHoursDay } from '@/api/settings'
@@ -738,16 +745,114 @@ function fmt(n: number) {
   return n.toLocaleString('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 })
 }
 
+
+function TimeEntryEditDialog({
+  providerId,
+  entry,
+  defaultDate,
+  onClose,
+}: {
+  providerId: string
+  entry: TimeEntry | null
+  defaultDate: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [date, setDate] = useState(entry?.date ?? defaultDate)
+  const [inTime, setInTime] = useState(
+    entry ? new Date(entry.check_in_at).toTimeString().slice(0, 5) : '09:00'
+  )
+  const [outTime, setOutTime] = useState(
+    entry?.check_out_at ? new Date(entry.check_out_at).toTimeString().slice(0, 5) : ''
+  )
+  const [notes, setNotes] = useState(entry?.notes ?? '')
+  const [err, setErr] = useState('')
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const toISO = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString()
+      const checkIn = toISO(date, inTime)
+      const checkOut = outTime ? toISO(date, outTime) : null
+      if (checkOut && checkOut <= checkIn) throw new Error('Check-out must be after check-in')
+      if (entry) {
+        return patchEntry(entry.id, checkIn, checkOut, notes || null)
+      } else {
+        return adminCreateEntry(providerId, checkIn, checkOut, notes || null)
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['time-entries-period'] })
+      qc.invalidateQueries({ queryKey: ['provider-payroll'] })
+      onClose()
+    },
+    onError: (e: Error) => setErr(e.message),
+  })
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl p-6 w-80 space-y-4" onClick={e => e.stopPropagation()}>
+        <h3 className="font-semibold text-sm">{entry ? 'Edit time entry' : 'Add time entry'}</h3>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Date</Label>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 h-8 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Check-in</Label>
+            <Input type="time" value={inTime} onChange={e => setInTime(e.target.value)} className="mt-1 h-8 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Check-out <span className="text-muted-foreground">(optional)</span></Label>
+            <Input type="time" value={outTime} onChange={e => setOutTime(e.target.value)} className="mt-1 h-8 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Notes</Label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 h-8 text-sm" placeholder="Optional" />
+          </div>
+        </div>
+        {err && <p className="text-xs text-destructive">{err}</p>}
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending} className="flex-1">
+            {mut.isPending ? 'Saving…' : 'Save'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PaystubPanel({ provider }: { provider: ProviderDetail }) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [showEntryDialog, setShowEntryDialog] = useState(false)
+  const [targetEntry, setTargetEntry] = useState<TimeEntry | null>(null)
+
+  // Period bounds for time entry queries
+  const periodStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const periodEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['provider-payroll', provider.id, year, month],
     queryFn: () => getProviderPayroll(provider.id, year, month),
     enabled: !!provider.pay_type,
+  })
+
+  const { data: entries = [] } = useQuery({
+    queryKey: ['time-entries-period', provider.id, year, month],
+    queryFn: () => listEntriesForPeriod(provider.id, periodStart, periodEnd),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteEntry(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['time-entries-period'] })
+      qc.invalidateQueries({ queryKey: ['provider-payroll'] })
+    },
   })
 
   if (!provider.pay_type) {
@@ -797,6 +902,69 @@ function PaystubPanel({ provider }: { provider: ProviderDetail }) {
         <span className="text-xs text-muted-foreground">Pay period: {MONTH_NAMES[month-1]} {year}</span>
       </div>
 
+      {/* Time entries */}
+      <div className="mb-6 border rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hours Worked</span>
+          <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => { setTargetEntry(null); setShowEntryDialog(true) }}>
+            <Plus size={12} className="mr-1" /> Add entry
+          </Button>
+        </div>
+        {entries.length === 0 ? (
+          <p className="text-xs text-muted-foreground px-4 py-3">No time entries recorded — payroll uses scheduled hours.</p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/10">
+                <th className="px-4 py-2 text-xs text-left font-medium text-muted-foreground">Date</th>
+                <th className="px-4 py-2 text-xs text-left font-medium text-muted-foreground">In</th>
+                <th className="px-4 py-2 text-xs text-left font-medium text-muted-foreground">Out</th>
+                <th className="px-4 py-2 text-xs text-right font-medium text-muted-foreground">Hours</th>
+                <th className="w-16" />
+              </tr>
+            </thead>
+            <tbody className="px-4">
+              {entries.map(e => (
+                <tr key={e.id} className="border-b last:border-0 group">
+                  <td className="px-4 py-2 text-sm">{e.date}</td>
+                  <td className="px-4 py-2 text-sm">
+                    {new Date(e.check_in_at).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}
+                  </td>
+                  <td className="px-4 py-2 text-sm">
+                    {e.check_out_at
+                      ? new Date(e.check_out_at).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })
+                      : <span className="text-amber-600 text-xs">open</span>}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-right">{e.hours != null ? `${e.hours}h` : '—'}</td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => { setTargetEntry(e); setShowEntryDialog(true) }} className="p-1 hover:text-foreground text-muted-foreground"><Pencil size={13} /></button>
+                      <button onClick={() => deleteMut.mutate(e.id)} className="p-1 hover:text-destructive text-muted-foreground"><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-muted/10">
+                <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-muted-foreground">Total</td>
+                <td className="px-4 py-2 text-sm font-semibold text-right">
+                  {entries.filter(e => e.hours != null).reduce((s, e) => s + (e.hours ?? 0), 0).toFixed(2)}h
+                </td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showEntryDialog && (
+        <TimeEntryEditDialog
+          providerId={provider.id}
+          entry={targetEntry}
+          defaultDate={periodStart}
+          onClose={() => setShowEntryDialog(false)}
+        />
+      )}
+
       {isLoading && <p className="text-sm text-muted-foreground">{t('reports.calculating')}</p>}
       {isError && (
         <p className="text-sm text-destructive">
@@ -822,8 +990,14 @@ function PaystubPanel({ provider }: { provider: ProviderDetail }) {
               <tr><td className="w-4" /><td /></tr>
 
               {section(t('staff.section_hours'))}
-              {row(t('staff.scheduled_hours'), `${data.scheduled_hours} h`)}
-              {data.hourly_minimum && row(`${t('staff.hourly_floor_label')} (${data.scheduled_hours} h × ${fmt(data.hourly_minimum)})`, fmt(data.hourly_floor_amount))}
+              {row('Scheduled hours', `${data.scheduled_hours} h`)}
+              {data.actual_hours > 0 && row('Actual hours (time entries)', `${data.actual_hours} h`)}
+              {row(
+                data.hours_source === 'actual' ? 'Payroll hours (actual)' : 'Payroll hours (scheduled — no entries)',
+                `${data.payroll_hours} h`,
+                true,
+              )}
+              {data.hourly_minimum && row(`${t('staff.hourly_floor_label')} (${data.payroll_hours} h × ${fmt(data.hourly_minimum)})`, fmt(data.hourly_floor_amount))}
 
               {data.pay_type === 'commission' && (
                 <>
