@@ -529,14 +529,22 @@ function DetailsForm({
           />
         </div>
         <div>
-          <Label>{t('services.default_cost')}</Label>
-          <input
-            type="text" inputMode="decimal"
-            value={form.default_cost}
-            onChange={e => set('default_cost', e.target.value)}
-            className="w-full mt-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
-            placeholder="0.00"
-          />
+          {(() => {
+            const cat = categories.find(c => c.id === form.category_id)
+            const isColour = cat ? /colour|color|colouring/i.test(cat.name) : false
+            return (
+              <>
+                <Label>{isColour ? 'Default cost (% of provider price) — optional' : t('services.default_cost')}</Label>
+                <input
+                  type="text" inputMode="decimal"
+                  value={form.default_cost}
+                  onChange={e => set('default_cost', e.target.value)}
+                  className="w-full mt-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
+                  placeholder={isColour ? 'e.g. 20 for 20%' : '0.00'}
+                />
+              </>
+            )
+          })()}
         </div>
         <div>
           <Label>{t('services.duration_label')}</Label>
