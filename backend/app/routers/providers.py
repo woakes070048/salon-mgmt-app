@@ -22,6 +22,7 @@ class ProviderOut(BaseModel):
     provider_type: str
     booking_order: int
     has_appointments: bool
+    makes_appointments: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -171,6 +172,7 @@ async def list_providers(
             provider_type=p.provider_type.value,
             booking_order=p.booking_order,
             has_appointments=p.has_appointments,
+            makes_appointments=p.makes_appointments,
         )
         for p in providers
     ]

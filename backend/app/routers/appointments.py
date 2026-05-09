@@ -55,6 +55,7 @@ class ProviderSummary(BaseModel):
     id: str
     display_name: str
     provider_type: str
+    makes_appointments: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -172,11 +173,13 @@ async def _load_appointment_out(appt: Appointment, db: AsyncSession) -> Appointm
                     id=str(prov.id),
                     display_name=prov.display_name,
                     provider_type=prov.provider_type.value,
+                    makes_appointments=prov.makes_appointments,
                 ),
                 second_provider=ProviderSummary(
                     id=str(sec.id),
                     display_name=sec.display_name,
                     provider_type=sec.provider_type.value,
+                    makes_appointments=sec.makes_appointments,
                 ) if sec else None,
                 sequence=item.sequence,
                 start_time=item.start_time,

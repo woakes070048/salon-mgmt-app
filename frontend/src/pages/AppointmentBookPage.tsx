@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { useDateLocale } from '@/lib/dateLocale'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
-import { format, addDays, subDays, parseISO } from 'date-fns'
+import { format, addDays, subDays, parseISO, getISODay } from 'date-fns'
 import { listAppointments, type Appointment, type AppointmentItem } from '@/api/appointments'
 import { listProviders, type Provider } from '@/api/providers'
 import { getSchedule } from '@/api/schedules'
 import { getRequest } from '@/api/appointmentRequests'
 import { type Recommendation } from '@/api/scheduling'
-import { getBranding, type SlotMinutes } from '@/api/settings'
+import { getBranding, getOperatingHours, type SlotMinutes } from '@/api/settings'
 import { listTimeBlocks, type TimeBlock } from '@/api/timeBlocks'
 import TimeGrid from '@/components/appointment-book/TimeGrid'
 import AppointmentDetail from '@/components/appointment-book/AppointmentDetail'
@@ -171,19 +171,47 @@ export default function AppointmentBookPage() {
   // Reset pins when the date changes
   useEffect(() => { setPinnedProviderIds(new Set()) }, [date])
 
+  const { data: operatingHours = [] } = useQuery({
+    queryKey: ['operating-hours'],
+    queryFn: getOperatingHours,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // day_of_week: 0=Mon…6=Sun; date-fns getISODay: 1=Mon…7=Sun
+  const dayIndex = (getISODay(parseISO(date + 'T12:00:00')) % 7)  // convert to 0=Mon…6=Sun
+  const salonOpen = operatingHours.length === 0
+    || (operatingHours.find(d => d.day_of_week === dayIndex)?.is_open ?? true)
+
   const activeProviders = providers.filter(p => p.has_appointments)
   const workingProviderIds = new Set(schedules.filter(s => s.is_working).map(s => s.provider_id))
   const providersWithAppts = new Set(appointments.flatMap(a => a.items.map(i => i.provider.id)))
-  const autoVisible = schedules.length === 0
-    ? activeProviders
-    : activeProviders.filter(p => workingProviderIds.has(p.id) || providersWithAppts.has(p.id))
+
+  // Providers that auto-show: must be scheduled (or have appointments) AND salon must be open
+  // AND provider must be a real bookable person (makes_appointments=true).
+  // Providers with makes_appointments=false (e.g. HOUSE) always stay in the pin pool.
+  const autoVisible = (!salonOpen || schedules.length === 0)
+    ? []
+    : activeProviders.filter(p =>
+        p.makes_appointments &&
+        (workingProviderIds.has(p.id) || providersWithAppts.has(p.id))
+      )
+
   const visibleProviders = [
     ...autoVisible,
     ...activeProviders.filter(p => pinnedProviderIds.has(p.id) && !autoVisible.some(v => v.id === p.id)),
   ]
   const unscheduledProviders = activeProviders.filter(
-    p => !workingProviderIds.has(p.id) && !providersWithAppts.has(p.id)
+    p => !autoVisible.some(v => v.id === p.id) && !pinnedProviderIds.has(p.id)
   )
+
+  // Inject synthetic zero-window schedule for pinned providers so the whole
+  // column shades amber and the drag warning fires for any appointment.
+  const augmentedSchedules = [
+    ...schedules,
+    ...[...pinnedProviderIds]
+      .filter(id => !workingProviderIds.has(id))
+      .map(id => ({ provider_id: id, date, is_working: true, start_time: '08:00', end_time: '08:00' })),
+  ]
   const displayDate = parseISO(date + 'T12:00:00')
 
   const prev  = useCallback(() => setDate(format(subDays(displayDate, 1), 'yyyy-MM-dd')), [displayDate])
@@ -381,7 +409,8 @@ export default function AppointmentBookPage() {
             timeBlocks={timeBlocks}
             date={date}
             slotMinutes={slotMinutes}
-            providerHours={schedules}
+            providerHours={augmentedSchedules}
+            pinnedProviderIds={pinnedProviderIds}
             tsi={tsi}
             onTsiChange={(t) => { setTsi(t); if (t) (document.activeElement as HTMLElement)?.blur() }}
             onItemClick={(item, appt) => setSelected({ item, appt })}

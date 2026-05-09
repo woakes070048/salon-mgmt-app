@@ -6,6 +6,7 @@ export interface Provider {
   provider_type: 'stylist' | 'colourist' | 'dualist'
   booking_order: number
   has_appointments: boolean
+  makes_appointments: boolean
 }
 
 export interface ProviderDetail {

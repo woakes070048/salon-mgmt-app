@@ -13,6 +13,7 @@ export interface ProviderSummary {
   id: string
   display_name: string
   provider_type: 'stylist' | 'colourist' | 'dualist'
+  makes_appointments: boolean
 }
 
 export interface ClientSummary {

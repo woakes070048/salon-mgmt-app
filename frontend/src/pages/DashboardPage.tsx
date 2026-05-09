@@ -319,7 +319,9 @@ export default function DashboardPage() {
       ).filter((p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx)
     : Array.from(
         new Map(
-          activeAppts.flatMap(a => a.items.map(i => [i.provider.id, i.provider] as [string, { id: string; display_name: string }]))
+          activeAppts.flatMap(a => a.items
+            .filter(i => i.provider.makes_appointments)
+            .map(i => [i.provider.id, i.provider] as [string, { id: string; display_name: string; makes_appointments: boolean }]))
         ).values()
       ).sort((a, b) => a.display_name.localeCompare(b.display_name))
 
