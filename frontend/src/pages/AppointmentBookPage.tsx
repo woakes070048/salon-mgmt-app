@@ -186,14 +186,13 @@ export default function AppointmentBookPage() {
   const workingProviderIds = new Set(schedules.filter(s => s.is_working).map(s => s.provider_id))
   const providersWithAppts = new Set(appointments.flatMap(a => a.items.map(i => i.provider.id)))
 
-  // Providers that auto-show: must be scheduled (or have appointments) AND salon must be open
-  // AND provider must be a real bookable person (makes_appointments=true).
-  // Providers with makes_appointments=false (e.g. HOUSE) always stay in the pin pool.
+  // Providers that auto-show: must be scheduled for today AND salon must be open.
+  // Providers with no schedule (including HOUSE) always stay in the pin pool so
+  // they appear grey when added, never white.
   const autoVisible = (!salonOpen || schedules.length === 0)
     ? []
     : activeProviders.filter(p =>
-        p.makes_appointments &&
-        (workingProviderIds.has(p.id) || providersWithAppts.has(p.id))
+        p.makes_appointments && workingProviderIds.has(p.id)
       )
 
   const visibleProviders = [
