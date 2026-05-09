@@ -452,7 +452,7 @@
   "services": {
     "page_title": "Services",
     "page_description": "The catalog of services this salon offers. Each service can be assigned to one or more providers, optionally with a price or duration override.",
-    "new_service": "+ New service",
+    "new_service": "New service",
     "categories_section": "Categories ({{count}})",
     "no_services": "No services yet. Click \"New service\" to add one.",
     "create_category_first": "Create a category first, then add services.",
@@ -767,7 +767,7 @@
     "monthly_threshold": "Monthly threshold ($)",
     "commission_rate": "Commission rate (%)",
     "delete_bracket": "×",
-    "add_bracket": "+ Add bracket",
+    "add_bracket": "Add bracket",
     "product_fees": "Product Fees",
     "fees_help": "Deducted from service revenue before applying the commission rate.",
     "styling_fee": "Styling fee ($ flat)",
@@ -828,7 +828,7 @@
   "users": {
     "page_title": "Users",
     "page_subtitle": "Manage staff and admin accounts.",
-    "add_user": "+ Add user",
+    "add_user": "Add user",
     "add_user_title": "Add user",
     "language_preference": "Language preference",
     "role_staff": "Staff",

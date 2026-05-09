@@ -452,7 +452,7 @@
   "services": {
     "page_title": "Services",
     "page_description": "Le catalogue des services offerts par ce salon. Chaque service peut être attribué à un ou plusieurs prestataires, avec un prix ou une durée optionnels.",
-    "new_service": "+ Nouveau service",
+    "new_service": "Nouveau service",
     "categories_section": "Catégories ({{count}})",
     "no_services": "Aucun service pour l'instant. Cliquez sur « Nouveau service » pour en ajouter un.",
     "create_category_first": "Créez d'abord une catégorie, puis ajoutez des services.",
@@ -767,7 +767,7 @@
     "monthly_threshold": "Seuil mensuel ($)",
     "commission_rate": "Taux de commission (%)",
     "delete_bracket": "×",
-    "add_bracket": "+ Ajouter une tranche",
+    "add_bracket": "Ajouter une tranche",
     "product_fees": "Frais de produits",
     "fees_help": "Déduits des revenus de services avant l'application du taux de commission.",
     "styling_fee": "Frais de coiffure ($ fixe)",
@@ -828,7 +828,7 @@
   "users": {
     "page_title": "Utilisateurs",
     "page_subtitle": "Gérez les comptes du personnel et des administrateurs.",
-    "add_user": "+ Ajouter un utilisateur",
+    "add_user": "Ajouter un utilisateur",
     "add_user_title": "Ajouter un utilisateur",
     "language_preference": "Préférence de langue",
     "role_staff": "Personnel",
