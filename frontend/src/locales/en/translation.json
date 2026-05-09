@@ -365,7 +365,7 @@
     "none_option": "— none —",
     "qty": "Qty",
     "price_col": "Price ($)",
-    "discount_col": "Discount ($)",
+    "discount_col": "Discount",
     "line_col": "Line",
     "subtotal": "Subtotal",
     "discount": "Discount",

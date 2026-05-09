@@ -365,7 +365,7 @@
     "none_option": "— aucune —",
     "qty": "Qté",
     "price_col": "Prix ($)",
-    "discount_col": "Rabais ($)",
+    "discount_col": "Rabais",
     "line_col": "Ligne",
     "subtotal": "Sous-total",
     "discount": "Rabais",
