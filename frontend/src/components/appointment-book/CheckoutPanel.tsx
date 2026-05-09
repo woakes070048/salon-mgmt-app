@@ -25,7 +25,9 @@ interface ItemDraft {
   providerName: string
   quantity: number
   unitPrice: string
-  discount: string
+  discount: string        // always dollar amount used for calculations
+  discountMode: '$' | '%'
+  discountInput: string   // raw user input ($ or % depending on mode)
   promotionId: string | null
   isGstExempt: boolean
   isPstExempt: boolean
@@ -81,6 +83,8 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       quantity: 1,
       unitPrice: it.price.toFixed(2),
       discount: '0.00',
+      discountMode: '$' as const,
+      discountInput: '0.00',
       promotionId: null,
       isGstExempt: false,
       isPstExempt: false,
@@ -116,6 +120,8 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
         quantity: 1,
         unitPrice: it.price.toFixed(2),
         discount: '0.00',
+        discountMode: '$' as const,
+        discountInput: '0.00',
         promotionId: null,
         isGstExempt: false,
         isPstExempt: false,
@@ -187,6 +193,8 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       quantity: 1,
       unitPrice: parseFloat(ri.default_price).toFixed(2),
       discount: '0.00',
+      discountMode: '$' as const,
+      discountInput: '0.00',
       promotionId: null,
       isGstExempt: ri.is_gst_exempt,
       isPstExempt: ri.is_pst_exempt,
@@ -200,9 +208,9 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
   function applyPromotionToItem(idx: number, promo: Promotion | null) {
     setItems(prev => prev.map((it, i) => {
       if (i !== idx) return it
-      if (!promo) return { ...it, promotionId: null, discount: '0.00' }
+      if (!promo) return { ...it, promotionId: null, discount: '0.00', discountMode: '$' as const, discountInput: '0.00' }
       const discountAmt = applyPromotion(promo, toMoney(it.unitPrice))
-      return { ...it, promotionId: promo.id, discount: fmt(discountAmt) }
+      return { ...it, promotionId: promo.id, discount: fmt(discountAmt), discountMode: '$' as const, discountInput: fmt(discountAmt) }
     }))
   }
 
@@ -434,15 +442,41 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">{t('checkout.discount_col')}</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={it.discount}
-                      onChange={e => updateItem(idx, { discount: e.target.value, promotionId: null })}
-                      className={`w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5 ${
-                        overDiscount ? 'border-destructive' : 'border-input'
-                      }`}
-                    />
+                    <div className={`flex mt-0.5 rounded-md border overflow-hidden ${overDiscount ? 'border-destructive' : 'border-input'}`}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={it.discountInput}
+                        onChange={e => {
+                          const raw = e.target.value
+                          const num = parseFloat(raw) || 0
+                          const dollar = it.discountMode === '%'
+                            ? fmt(toMoney(it.unitPrice) * Math.min(num, 100) / 100)
+                            : raw
+                          updateItem(idx, { discountInput: raw, discount: dollar, promotionId: null })
+                        }}
+                        className="flex-1 min-w-0 px-2 py-1.5 text-sm bg-background outline-none"
+                      />
+                      {(['$', '%'] as const).map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => {
+                            const price = toMoney(it.unitPrice)
+                            const existingDollar = toMoney(it.discount)
+                            const newInput = mode === '%' && price > 0
+                              ? fmt((existingDollar / price) * 100)
+                              : fmt(existingDollar)
+                            updateItem(idx, { discountMode: mode, discountInput: newInput, promotionId: null })
+                          }}
+                          className={`px-2 text-xs font-medium border-l border-input transition-colors ${
+                            it.discountMode === mode
+                              ? 'bg-foreground text-background'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                          }`}
+                        >{mode}</button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">{t('checkout.line_col')}</label>
