@@ -571,27 +571,9 @@ All references to the previous salon software have been removed:
 - ERM, reports annotations, CGI worked-examples doc cleaned
 - UI label updated to "Provider code"
 
-### P2-24 · Staff check-in / check-out
+### P2-24 · Staff check-in / check-out · ✅ Complete
 
-Staff check in and out on the app each working day so the system knows their actual hours. This is the authoritative source for hourly pay when a provider's service commission for the pay period does not meet their hourly floor.
-
-**Why this matters:** The payroll calculator currently uses *scheduled* hours from the provider's weekly schedule as a proxy. Scheduled hours are not the same as hours actually worked — staff may arrive late, leave early, or work extra. For hourly-floor calculation this needs to be accurate.
-
-**Data model:**
-- `StaffTimeEntry` table: `provider_id`, `tenant_id`, `entry_date` (date), `check_in_at` (timestamptz), `check_out_at` (timestamptz nullable), `total_hours` (computed on check-out), `notes`.
-- One open entry per provider per day (check_in_at set, check_out_at null = currently clocked in).
-- Check-out closes the entry and computes `total_hours`.
-
-**App flow:**
-- Staff-facing clock widget on the dashboard (or a dedicated clock-in page): large "Clock In" / "Clock Out" button showing current status.
-- Admin can view and edit time entries for any provider (corrections for forgotten clock-outs, etc.) from the Staff Management page under a new "Time" tab.
-- Admin can manually add entries (e.g. forgot to clock in).
-
-**Payroll integration:**
-- Payroll calculator switches from scheduled hours to summed `total_hours` from `StaffTimeEntry` for the pay period when time entries exist.
-- Falls back to schedule-derived hours if no entries for the period (preserves backward compatibility during rollout).
-
-**Depends on:** Staff Management module (already built).
+`StaffTimeEntry` model, `time_entries` router (`POST /time-entries`, `POST /time-entries/{id}/check-out`, `PATCH`, `DELETE`), dashboard clock widget, and `ManualTimeEntryDialog` for admin corrections. Payroll calculator uses summed `total_hours` when entries exist, falls back to scheduled hours otherwise.
 
 ### P2-25 · Annual / flat salary pay type for owner
 
@@ -1020,7 +1002,7 @@ Provider records their actual working hours from their phone.
 - Displays today's entry (in or out, time logged so far)
 - Admin corrections and multi-day history remain desktop-only
 
-**Depends on:** P2-24 staff check-in/check-out (already in the desktop backlog — build that backend first if not done).
+**Depends on:** P2-24 (complete — `POST /time-entries` and `POST /time-entries/{id}/check-out` already exist).
 
 ---
 
