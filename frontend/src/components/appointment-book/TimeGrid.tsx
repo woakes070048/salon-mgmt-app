@@ -118,9 +118,10 @@ interface Props {
   onBlockClick?: (block: TimeBlock) => void
   onClientClick?: (clientId: string) => void
   pinnedProviderIds?: Set<string>
+  onDismissProvider?: (id: string) => void
 }
 
-export default function TimeGrid({ providers, appointments, timeBlocks, date, slotMinutes, providerHours = [], tsi = null, onTsiChange, onItemClick, onNewAppointment, onNewBlock, onBlockClick, onClientClick, pinnedProviderIds }: Props) {
+export default function TimeGrid({ providers, appointments, timeBlocks, date, slotMinutes, providerHours = [], tsi = null, onTsiChange, onItemClick, onNewAppointment, onNewBlock, onBlockClick, onClientClick, pinnedProviderIds, onDismissProvider }: Props) {
   const qc = useQueryClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -561,11 +562,21 @@ export default function TimeGrid({ providers, appointments, timeBlocks, date, sl
             {/* Header */}
             <div
               style={{ height: HEADER_HEIGHT }}
-              className="border-b flex flex-col items-center justify-center sticky top-0 z-10 bg-white"
+              className="border-b flex flex-col items-center justify-center sticky top-0 z-10 bg-white relative group/hdr"
             >
               <span className="text-sm font-medium truncate px-2">{provider.display_name}</span>
               {pinnedProviderIds?.has(provider.id) && (
                 <span className="text-[10px] font-medium text-amber-600 tracking-wide uppercase">Not scheduled</span>
+              )}
+              {/* Dismiss button — only for auto-visible (not pinned) providers */}
+              {onDismissProvider && !pinnedProviderIds?.has(provider.id) && (
+                <button
+                  onClick={() => onDismissProvider(provider.id)}
+                  className="absolute top-1 right-1 p-0.5 rounded opacity-0 group-hover/hdr:opacity-100 transition-opacity text-muted-foreground hover:text-foreground hover:bg-muted"
+                  title="Remove from today's grid"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+                </button>
               )}
             </div>
 
@@ -610,14 +621,13 @@ export default function TimeGrid({ providers, appointments, timeBlocks, date, sl
                 })
               }}
             >
-              {/* Off-hours shading — amber for pinned (not scheduled), gray for normal off-hours */}
+              {/* Off-hours shading — amber for pinned (no schedule), gray for normal off-hours or no schedule */}
               {((_h) => {
                 const isPinned = pinnedProviderIds?.has(provider.id)
-                // Pinned with no schedule → shade entire column amber
                 if (!_h) {
-                  return isPinned
-                    ? <div className="absolute inset-0 bg-amber-50 pointer-events-none z-[1]" />
-                    : null
+                  // No schedule at all → shade entire column
+                  const shade = isPinned ? 'bg-amber-50' : 'bg-gray-100'
+                  return <div className={`absolute inset-0 ${shade} pointer-events-none z-[1]`} />
                 }
                 const shade = isPinned ? 'bg-amber-50' : 'bg-gray-100'
                 return (

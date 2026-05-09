@@ -167,9 +167,13 @@ export default function AppointmentBookPage() {
   })
 
   const [pinnedProviderIds, setPinnedProviderIds] = useState<Set<string>>(new Set())
+  const [dismissedProviderIds, setDismissedProviderIds] = useState<Set<string>>(new Set())
 
-  // Reset pins when the date changes
-  useEffect(() => { setPinnedProviderIds(new Set()) }, [date])
+  // Reset pins and dismissals when the date changes
+  useEffect(() => {
+    setPinnedProviderIds(new Set())
+    setDismissedProviderIds(new Set())
+  }, [date])
 
   const { data: operatingHours = [] } = useQuery({
     queryKey: ['operating-hours'],
@@ -184,15 +188,15 @@ export default function AppointmentBookPage() {
 
   const activeProviders = providers.filter(p => p.has_appointments)
   const workingProviderIds = new Set(schedules.filter(s => s.is_working).map(s => s.provider_id))
-  const providersWithAppts = new Set(appointments.flatMap(a => a.items.map(i => i.provider.id)))
 
-  // Providers that auto-show: must be scheduled for today AND salon must be open.
-  // Providers with no schedule (including HOUSE) always stay in the pin pool so
-  // they appear grey when added, never white.
+  // Providers that auto-show: must be scheduled for today, salon open, not dismissed.
+  // Providers with no schedule or makes_appointments=false always stay in the pin pool.
   const autoVisible = (!salonOpen || schedules.length === 0)
     ? []
     : activeProviders.filter(p =>
-        p.makes_appointments && workingProviderIds.has(p.id)
+        p.makes_appointments &&
+        workingProviderIds.has(p.id) &&
+        !dismissedProviderIds.has(p.id)
       )
 
   const visibleProviders = [
@@ -203,14 +207,21 @@ export default function AppointmentBookPage() {
     p => !autoVisible.some(v => v.id === p.id) && !pinnedProviderIds.has(p.id)
   )
 
-  // Inject synthetic zero-window schedule for pinned providers so the whole
-  // column shades amber and the drag warning fires for any appointment.
-  const augmentedSchedules = [
+  // All pinned providers get a zero-window schedule so the column shades grey
+  // regardless of their real weekly schedule (covers dismissed+repinned providers too).
+  const augmentedSchedules: typeof schedules = [
     ...schedules,
-    ...[...pinnedProviderIds]
-      .filter(id => !workingProviderIds.has(id))
-      .map(id => ({ provider_id: id, date, is_working: true, start_time: '08:00', end_time: '08:00' })),
+    ...[...pinnedProviderIds].map(id => ({
+      provider_id: id, display_name: '', booking_order: 0,
+      is_working: true, start_time: '08:00', end_time: '08:00',
+    })),
   ]
+
+  function handleDismissProvider(id: string) {
+    setDismissedProviderIds(prev => new Set([...prev, id]))
+    // If somehow also pinned, remove from pins
+    setPinnedProviderIds(prev => { const s = new Set(prev); s.delete(id); return s })
+  }
   const displayDate = parseISO(date + 'T12:00:00')
 
   const prev  = useCallback(() => setDate(format(subDays(displayDate, 1), 'yyyy-MM-dd')), [displayDate])
@@ -410,6 +421,7 @@ export default function AppointmentBookPage() {
             slotMinutes={slotMinutes}
             providerHours={augmentedSchedules}
             pinnedProviderIds={pinnedProviderIds}
+            onDismissProvider={handleDismissProvider}
             tsi={tsi}
             onTsiChange={(t) => { setTsi(t); if (t) (document.activeElement as HTMLElement)?.blur() }}
             onItemClick={(item, appt) => setSelected({ item, appt })}
