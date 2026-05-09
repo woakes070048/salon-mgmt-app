@@ -942,6 +942,134 @@ Figures reconcile between SalonOS and Milano for the parallel run period. Confir
 
 ---
 
+## Phase 4 — Provider Mobile App (iOS + Android)
+
+React Native + Expo app for individual providers. Consumes the existing SalonOS backend API — no new endpoints required for the core features. Designed for the day-to-day workflow of a stylist: see today's clients, pull up colour notes, check out, clock in and out.
+
+**Stack:** React Native · Expo (managed workflow) · TypeScript · EAS Build · Expo Push Notifications
+
+**Scope boundary:** Admin functions (settings, payroll, user management, reports, staff schedules) remain desktop-only. The mobile app is a provider-facing companion, not a replacement for the staff web app.
+
+**Auth:** Same JWT backend. Login screen calls `POST /auth/login`; token stored in `expo-secure-store`. The `provider_id` returned by `/me` drives all provider-scoped queries — same logic as the desktop dashboard.
+
+---
+
+### PM-1 · App shell, auth, and today's schedule
+
+The foundation everything else runs on.
+
+**Auth flow:**
+- Login screen: email + password → `POST /auth/login`. Token persisted in `expo-secure-store`.
+- On cold launch: validate stored token via `GET /auth/me`; redirect to login if expired.
+- Sign out clears token and returns to login.
+
+**Home screen:**
+- Today's appointment list, scoped to the logged-in provider (`provider_id` from `/me`)
+- Each row: client name, services, start time, status badge
+- Tap an appointment → Appointment detail screen
+- Pull-to-refresh
+- Salon-closed indicator when operating hours mark the day off (same logic as desktop dashboard)
+
+**Appointment detail screen:**
+- Client name, services, time, status
+- Status action buttons: Mark In Progress / Mark Completed / Cancel (mirrors desktop status flow)
+- Link to client card (PM-2)
+- Link to checkout (PM-3) when status is `in_progress`
+
+**Navigation:** bottom tab bar — Schedule · Clients · Clock (PM-4) · Briefing (PM-5)
+
+---
+
+### PM-2 · Client card (mobile)
+
+Provider looks up a client to review notes before or during a service.
+
+- Accessible from appointment detail (tap client name) or via a search entry point on a Clients tab
+- **Read + edit:** colour formula notes, service notes, general notes — same fields as the desktop client card
+- Visit history: past appointments with services, providers, dates (read-only)
+- Contact info: name, phone, pronouns (read-only — editing contact details stays desktop)
+- No-show / late-cancel counts
+
+**API:** same `/clients/{id}`, `/clients/{id}/history`, `/clients/{id}/colour-notes` endpoints already used by desktop.
+
+---
+
+### PM-3 · Basic checkout
+
+Provider checks out their own client at the end of a service.
+
+**Scope (mobile v1):**
+- Single appointment only — no group checkout on mobile (that's a front-desk workflow)
+- Service items pre-populated from the appointment; no retail line items in v1
+- Payment: select one payment method (full amount) or split across two
+- GST + PST computed and displayed
+- Submit → `POST /sales` (same endpoint as desktop)
+- On success: appointment status updates to `completed`
+
+**Out of scope for mobile v1:** retail items at checkout, promotions/discounts, cashback flow, voiding/editing a completed sale. These stay desktop-only.
+
+---
+
+### PM-4 · Clock in / clock out
+
+Provider records their actual working hours from their phone.
+
+- Large **Clock In** / **Clock Out** button on a dedicated tab, showing current status and today's elapsed time
+- Clock in: `POST /staff/time-entries` — creates an open `StaffTimeEntry` for today
+- Clock out: `PATCH /staff/time-entries/{id}` — closes the entry and sets `total_hours`
+- Displays today's entry (in or out, time logged so far)
+- Admin corrections and multi-day history remain desktop-only
+
+**Depends on:** P2-24 staff check-in/check-out (already in the desktop backlog — build that backend first if not done).
+
+---
+
+### PM-5 · Stylist briefing widget
+
+Surfaces the P3-5 stylist audience briefing on the home screen so providers see their day at a glance when they open the app.
+
+- Collapsible card at the top of the Schedule tab
+- Pulls the latest briefing for the logged-in provider from the briefing engine delivery endpoint
+- Content: today's client list preview with formula notes flagged, any no-show history callouts, flagged appointments (e.g. first-time clients)
+- Falls back gracefully if no briefing has been generated yet
+
+**Depends on:** P3-5 stylist briefing audience (backend briefing generation).
+
+---
+
+### PM-6 · Push notifications
+
+Providers receive real-time alerts on their phone without polling.
+
+**Notification types (v1):**
+- New booking request assigned to them (or all-staff broadcast)
+- Appointment reminder (day-of, configurable lead time — same triggers as email reminders P2-3)
+- Appointment cancelled (when a confirmed appointment they're on is cancelled)
+
+**Implementation:**
+- Expo Push Notifications + `expo-notifications`
+- On login, register the device token via a new `POST /devices/push-token` endpoint; store `(user_id, token, platform)` in a `push_tokens` table
+- Notification dispatch added to existing trigger points (new request, reminder job, cancellation)
+- On logout / uninstall: deregister token
+
+**Backend additions:** `push_tokens` table + token registration endpoint + Expo server SDK call (`exponent/push-notification-service`) in the relevant routers.
+
+---
+
+### PM-7 · App Store + Play Store submission
+
+Ship the app to both stores.
+
+- **EAS Build** for production builds (iOS + Android) via GitHub Actions
+- **Apple App Store:** Expo Apple account setup, provisioning profile, App Store Connect listing — screenshots, description, age rating
+- **Google Play:** Google Play Console account, signing key via EAS, internal → production track rollout
+- App name: **SalonOS** (or **Salon Lyol** for the single-tenant v1 build — revisit for multi-tenant)
+- Privacy policy required by both stores (covers camera permission for future profile photos, push notifications)
+
+**Phasing:** submit to TestFlight / internal Play track first; external release after Salon Lyol UAT on mobile.
+
+---
+
 ### P4-1 · QuickBooks Online integration
 
 Automate the daily bookkeeping journal entries from SalonOS into QuickBooks Online, replacing the need for a bookkeeper to manually transcribe Milano Daily Sales Reports.
