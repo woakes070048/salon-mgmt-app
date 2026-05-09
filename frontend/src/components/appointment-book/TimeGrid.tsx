@@ -568,8 +568,8 @@ export default function TimeGrid({ providers, appointments, timeBlocks, date, sl
               {pinnedProviderIds?.has(provider.id) && (
                 <span className="text-[10px] font-medium text-amber-600 tracking-wide uppercase">Not scheduled</span>
               )}
-              {/* Dismiss button — only for auto-visible (not pinned) providers */}
-              {onDismissProvider && !pinnedProviderIds?.has(provider.id) && (
+              {/* Remove from grid — works for both auto-visible and pinned providers */}
+              {onDismissProvider && (
                 <button
                   onClick={() => onDismissProvider(provider.id)}
                   className="absolute top-1 right-1 p-0.5 rounded opacity-0 group-hover/hdr:opacity-100 transition-opacity text-muted-foreground hover:text-foreground hover:bg-muted"

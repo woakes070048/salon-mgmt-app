@@ -218,9 +218,13 @@ export default function AppointmentBookPage() {
   ]
 
   function handleDismissProvider(id: string) {
-    setDismissedProviderIds(prev => new Set([...prev, id]))
-    // If somehow also pinned, remove from pins
-    setPinnedProviderIds(prev => { const s = new Set(prev); s.delete(id); return s })
+    if (pinnedProviderIds.has(id)) {
+      // Pinned provider — just unpin (returns to pool)
+      setPinnedProviderIds(prev => { const s = new Set(prev); s.delete(id); return s })
+    } else {
+      // Auto-visible provider — dismiss for the day
+      setDismissedProviderIds(prev => new Set([...prev, id]))
+    }
   }
   const displayDate = parseISO(date + 'T12:00:00')
 
