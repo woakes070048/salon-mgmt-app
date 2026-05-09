@@ -115,9 +115,9 @@ jobs:
         env:
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
         run: |
-          ENV_FLAG="--update-env-vars RUN_SEED=true,RUN_IMPORT=true"
+          ENV_FLAG="--update-env-vars RUN_SEED=false,RUN_IMPORT=false"
           if [ -n "$FRONTEND_URL" ]; then
-            ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,RUN_SEED=true,RUN_IMPORT=true"
+            ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,RUN_SEED=false,RUN_IMPORT=false"
           fi
           gcloud run deploy salon-api \
             --image ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
