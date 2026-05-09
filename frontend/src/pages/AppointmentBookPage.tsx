@@ -177,8 +177,8 @@ export default function AppointmentBookPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // day_of_week: 0=Mon…6=Sun; date-fns getISODay: 1=Mon…7=Sun
-  const dayIndex = (getISODay(parseISO(date + 'T12:00:00')) % 7)  // convert to 0=Mon…6=Sun
+  // day_of_week: 0=Mon…6=Sun; date-fns getISODay: 1=Mon…7=Sun → subtract 1
+  const dayIndex = getISODay(parseISO(date + 'T12:00:00')) - 1
   const salonOpen = operatingHours.length === 0
     || (operatingHours.find(d => d.day_of_week === dayIndex)?.is_open ?? true)
 
