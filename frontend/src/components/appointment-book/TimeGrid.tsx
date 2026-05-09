@@ -117,9 +117,10 @@ interface Props {
   onNewBlock?: (time: string, providerId: string) => void
   onBlockClick?: (block: TimeBlock) => void
   onClientClick?: (clientId: string) => void
+  pinnedProviderIds?: Set<string>
 }
 
-export default function TimeGrid({ providers, appointments, timeBlocks, date, slotMinutes, providerHours = [], tsi = null, onTsiChange, onItemClick, onNewAppointment, onNewBlock, onBlockClick, onClientClick }: Props) {
+export default function TimeGrid({ providers, appointments, timeBlocks, date, slotMinutes, providerHours = [], tsi = null, onTsiChange, onItemClick, onNewAppointment, onNewBlock, onBlockClick, onClientClick, pinnedProviderIds }: Props) {
   const qc = useQueryClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -560,9 +561,12 @@ export default function TimeGrid({ providers, appointments, timeBlocks, date, sl
             {/* Header */}
             <div
               style={{ height: HEADER_HEIGHT }}
-              className="border-b flex items-center justify-center sticky top-0 z-10 bg-white"
+              className="border-b flex flex-col items-center justify-center sticky top-0 z-10 bg-white"
             >
               <span className="text-sm font-medium truncate px-2">{provider.display_name}</span>
+              {pinnedProviderIds?.has(provider.id) && (
+                <span className="text-[10px] font-medium text-amber-600 tracking-wide uppercase">Not scheduled</span>
+              )}
             </div>
 
             {/* Grid body */}
@@ -606,13 +610,23 @@ export default function TimeGrid({ providers, appointments, timeBlocks, date, sl
                 })
               }}
             >
-              {/* Off-hours shading */}
-              {((_h) => _h && (
-                <>
-                  {_h.startPx > 0 && <div className="absolute inset-x-0 top-0 bg-gray-100 pointer-events-none z-[1]" style={{ height: _h.startPx }} />}
-                  {_h.endPx < TOTAL_HEIGHT && <div className="absolute inset-x-0 bg-gray-100 pointer-events-none z-[1]" style={{ top: _h.endPx, bottom: 0 }} />}
-                </>
-              ))(hoursMap.get(provider.id))}
+              {/* Off-hours shading — amber for pinned (not scheduled), gray for normal off-hours */}
+              {((_h) => {
+                const isPinned = pinnedProviderIds?.has(provider.id)
+                // Pinned with no schedule → shade entire column amber
+                if (!_h) {
+                  return isPinned
+                    ? <div className="absolute inset-0 bg-amber-50 pointer-events-none z-[1]" />
+                    : null
+                }
+                const shade = isPinned ? 'bg-amber-50' : 'bg-gray-100'
+                return (
+                  <>
+                    {_h.startPx > 0 && <div className={`absolute inset-x-0 top-0 ${shade} pointer-events-none z-[1]`} style={{ height: _h.startPx }} />}
+                    {_h.endPx < TOTAL_HEIGHT && <div className={`absolute inset-x-0 ${shade} pointer-events-none z-[1]`} style={{ top: _h.endPx, bottom: 0 }} />}
+                  </>
+                )
+              })(hoursMap.get(provider.id))}
 
               {/* Hour lines — skip the very first one (top: 0) to avoid bleeding into gutter border */}
               {hourLines.filter((topPx) => topPx > 0).map((topPx) => (
