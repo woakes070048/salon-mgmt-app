@@ -77,8 +77,6 @@ class Provider(TenantScopedBase):
     vacation_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=4.00)
     retail_commission_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=10.00)
     commission_tiers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    product_fee_styling_flat: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    product_fee_colour_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     # Banking
     bank_institution_no: Mapped[str | None] = mapped_column(String(10), nullable=True)

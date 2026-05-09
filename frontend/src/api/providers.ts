@@ -45,8 +45,6 @@ export interface ProviderDetail {
   vacation_pct: number | null
   retail_commission_pct: number | null
   commission_tiers: CommissionTier[] | null
-  product_fee_styling_flat: number | null
-  product_fee_colour_pct: number | null
 
   bank_institution_no: string | null
   bank_transit_no: string | null
@@ -105,8 +103,6 @@ export interface ProviderCreatePayload {
   vacation_pct?: number | null
   retail_commission_pct?: number | null
   commission_tiers?: CommissionTier[] | null
-  product_fee_styling_flat?: number | null
-  product_fee_colour_pct?: number | null
   bank_institution_no?: string | null
   bank_transit_no?: string | null
   bank_account_no?: string | null

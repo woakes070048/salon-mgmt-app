@@ -428,8 +428,6 @@ function CompensationTab({ provider }: { provider: ProviderDetail }) {
   const [tiers, setTiers] = useState<CommissionTier[]>(
     provider.commission_tiers ?? DEFAULT_TIERS
   )
-  const [stylingFee, setStylingFee] = useState(String(provider.product_fee_styling_flat ?? ''))
-  const [colourPct, setColourPct] = useState(String(provider.product_fee_colour_pct ?? ''))
 
   function updateTier(idx: number, field: keyof CommissionTier, value: string) {
     setTiers(prev => prev.map((tier, i) => i === idx ? { ...tier, [field]: parseFloat(value) || 0 } : tier))
@@ -451,8 +449,6 @@ function CompensationTab({ provider }: { provider: ProviderDetail }) {
       vacation_pct: vacationPct ? parseFloat(vacationPct) : null,
       retail_commission_pct: retailPct ? parseFloat(retailPct) : null,
       commission_tiers: payType === 'commission' ? tiers : null,
-      product_fee_styling_flat: stylingFee ? parseFloat(stylingFee) : null,
-      product_fee_colour_pct: colourPct ? parseFloat(colourPct) : null,
     }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['providers-all'] }),
   })
@@ -546,22 +542,6 @@ function CompensationTab({ provider }: { provider: ProviderDetail }) {
             <Plus size={14} className="mr-1" /> {t('staff.add_bracket')}
           </Button>
 
-          {sectionTitle(t('staff.product_fees'))}
-          <p className="text-xs text-muted-foreground mb-3">
-            {t('staff.fees_help')}
-          </p>
-          {fieldRow(t('staff.styling_fee'), (
-            <div className="space-y-1">
-              <Input type="number" step="0.01" value={stylingFee} onChange={e => setStylingFee(e.target.value)} className="w-32" placeholder="e.g. 5.00" />
-              <p className="text-xs text-muted-foreground">Per styling service appointment</p>
-            </div>
-          ))}
-          {fieldRow(t('staff.colour_fee'), (
-            <div className="space-y-1">
-              <Input type="number" step="0.1" value={colourPct} onChange={e => setColourPct(e.target.value)} className="w-32" placeholder="e.g. 10" />
-              <p className="text-xs text-muted-foreground">% of pre-tax colour service revenue</p>
-            </div>
-          ))}
         </>
       )}
 
@@ -853,8 +833,8 @@ function PaystubPanel({ provider }: { provider: ProviderDetail }) {
                   {row(t('staff.gross_service'), fmt(data.gross_service_revenue), true)}
 
                   {section(t('staff.section_product_fees'))}
-                  {data.styling_product_fee > 0 && row(`Styling (${data.styling_item_count} × flat fee)`, `(${fmt(data.styling_product_fee)})`)}
-                  {data.colour_product_fee > 0 && row(`Colour (${data.commission_tier_applied?.rate_pct ?? 0}% of colour revenue)`, `(${fmt(data.colour_product_fee)})`)}
+                  {data.styling_product_fee > 0 && row(`Styling (${data.styling_item_count} × service cost)`, `(${fmt(data.styling_product_fee)})`)}
+                  {data.colour_product_fee > 0 && row(`Colour (provider price × cost %)`, `(${fmt(data.colour_product_fee)})`)}
                   {row(t('staff.net_service'), fmt(data.net_service_revenue), true)}
 
                   {section(t('staff.section_commission'))}

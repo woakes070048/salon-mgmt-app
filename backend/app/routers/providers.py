@@ -67,8 +67,6 @@ class ProviderDetail(BaseModel):
     vacation_pct: float | None
     retail_commission_pct: float | None
     commission_tiers: list | None
-    product_fee_styling_flat: float | None
-    product_fee_colour_pct: float | None
 
     # Banking (account masked in response)
     bank_institution_no: str | None
@@ -132,8 +130,6 @@ def _detail(p: Provider) -> ProviderDetail:
         vacation_pct=float(p.vacation_pct) if p.vacation_pct is not None else None,
         retail_commission_pct=float(p.retail_commission_pct) if p.retail_commission_pct is not None else None,
         commission_tiers=p.commission_tiers if p.commission_tiers else None,
-        product_fee_styling_flat=float(p.product_fee_styling_flat) if p.product_fee_styling_flat is not None else None,
-        product_fee_colour_pct=float(p.product_fee_colour_pct) if p.product_fee_colour_pct is not None else None,
         bank_institution_no=p.bank_institution_no,
         bank_transit_no=p.bank_transit_no,
         bank_account_masked=_mask_account(p.bank_account_encrypted),
@@ -218,6 +214,17 @@ class ProviderPayrollLine(BaseModel):
     gross_before_vacation: float
     vacation_pay: float
     gross_pay: float
+    # Detailed breakdown — populated for the single-provider payroll view
+    styling_revenue: float = 0.0
+    styling_item_count: int = 0
+    colour_revenue: float = 0.0
+    colour_item_count: int = 0
+    gross_service_revenue: float = 0.0
+    styling_product_fee: float = 0.0
+    colour_product_fee: float = 0.0
+    total_product_fees: float = 0.0
+    net_service_revenue: float = 0.0
+    commission_tier_applied: "CommissionTierOut | None" = None
 
 
 async def _calc_payroll_line(
@@ -234,9 +241,28 @@ async def _calc_payroll_line(
     from app.models.appointment import AppointmentItem
     from app.models.sale import Sale, SaleItem, SaleItemKind, SaleStatus
     from app.models.service import Service, ServiceCategory
+    from app.models.provider_service_price import ProviderServicePrice
     from app.models.schedule import ProviderSchedule, ProviderScheduleException
 
     pid = p.id
+
+    # ── Provider-specific price overrides (most recent active per service) ───
+    psp_rows = (
+        await db.execute(
+            select(ProviderServicePrice.service_id, ProviderServicePrice.price)
+            .where(
+                ProviderServicePrice.provider_id == pid,
+                ProviderServicePrice.tenant_id == tid,
+                ProviderServicePrice.is_active == True,
+            )
+            .order_by(ProviderServicePrice.effective_from.desc())
+        )
+    ).all()
+    psp_price_map: dict[str, float] = {}
+    for r in psp_rows:
+        sid = str(r.service_id)
+        if sid not in psp_price_map:
+            psp_price_map[sid] = float(r.price)
 
     # ── Service revenue ───────────────────────────────────────────────────────
     service_rows = (
@@ -244,6 +270,9 @@ async def _calc_payroll_line(
             select(
                 SaleItem.line_total,
                 ServiceCategory.name.label("cat_name"),
+                Service.id.label("service_id"),
+                Service.default_cost.label("default_cost"),
+                Service.default_price.label("default_price"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
             .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
@@ -262,22 +291,34 @@ async def _calc_payroll_line(
 
     styling_revenue = D("0")
     styling_count = 0
+    styling_fee = D("0")
     colour_revenue = D("0")
+    colour_count = 0
+    colour_fee = D("0")
 
     for row in service_rows:
         cat = (row.cat_name or "").lower()
-        if "colour" in cat or "color" in cat or "colouring" in cat:
+        is_colour = "colour" in cat or "color" in cat or "colouring" in cat
+        sid = str(row.service_id)
+        effective_price = D(str(psp_price_map.get(sid, float(row.default_price or 0))))
+        default_cost = D(str(float(row.default_cost or 0)))
+
+        if is_colour:
             colour_revenue += row.line_total
+            colour_count += 1
+            # default_cost is a % of the provider's standard price for this service
+            colour_fee += effective_price * default_cost / D("100")
         else:
             styling_revenue += row.line_total
             styling_count += 1
+            # default_cost is a flat dollar amount per service item
+            styling_fee += default_cost
 
     gross_service_revenue = styling_revenue + colour_revenue
 
     # ── Product fees ─────────────────────────────────────────────────────────
-    styling_fee = D(str(p.product_fee_styling_flat or 0)) * styling_count
-    colour_fee = colour_revenue * D(str(p.product_fee_colour_pct or 0)) / D("100")
-    net_service_revenue = gross_service_revenue - styling_fee - colour_fee
+    total_product_fees = styling_fee + colour_fee
+    net_service_revenue = gross_service_revenue - total_product_fees
 
     # ── Commission tier ───────────────────────────────────────────────────────
     tiers = p.commission_tiers or []
@@ -413,6 +454,16 @@ async def _calc_payroll_line(
         gross_before_vacation=round(gross_before_vac, 2),
         vacation_pay=vacation_pay,
         gross_pay=gross_pay,
+        styling_revenue=round(float(styling_revenue), 2),
+        styling_item_count=styling_count,
+        colour_revenue=round(float(colour_revenue), 2),
+        colour_item_count=colour_count,
+        gross_service_revenue=round(float(gross_service_revenue), 2),
+        styling_product_fee=round(float(styling_fee), 2),
+        colour_product_fee=round(float(colour_fee), 2),
+        total_product_fees=round(float(total_product_fees), 2),
+        net_service_revenue=round(float(net_service_revenue), 2),
+        commission_tier_applied=CommissionTierOut(**applied_tier) if applied_tier else None,
     )
 
 
@@ -550,8 +601,6 @@ class ProviderCreate(BaseModel):
     vacation_pct: float | None = 4.0
     retail_commission_pct: float | None = 10.0
     commission_tiers: list | None = None
-    product_fee_styling_flat: float | None = None
-    product_fee_colour_pct: float | None = None
     bank_institution_no: str | None = None
     bank_transit_no: str | None = None
     bank_account_no: str | None = None
@@ -635,8 +684,6 @@ async def create_provider(
         vacation_pct=body.vacation_pct,
         retail_commission_pct=body.retail_commission_pct,
         commission_tiers=body.commission_tiers,
-        product_fee_styling_flat=body.product_fee_styling_flat,
-        product_fee_colour_pct=body.product_fee_colour_pct,
         bank_institution_no=body.bank_institution_no,
         bank_transit_no=body.bank_transit_no,
         bank_account_encrypted=body.bank_account_no,
@@ -691,8 +738,6 @@ class ProviderUpdate(BaseModel):
     vacation_pct: float | None = None
     retail_commission_pct: float | None = None
     commission_tiers: list | None = None
-    product_fee_styling_flat: float | None = None
-    product_fee_colour_pct: float | None = None
     bank_institution_no: str | None = None
     bank_transit_no: str | None = None
     bank_account_no: str | None = None
@@ -807,10 +852,6 @@ async def update_provider(
         p.retail_commission_pct = body.retail_commission_pct
     if body.commission_tiers is not None:
         p.commission_tiers = body.commission_tiers
-    if body.product_fee_styling_flat is not None:
-        p.product_fee_styling_flat = body.product_fee_styling_flat
-    if body.product_fee_colour_pct is not None:
-        p.product_fee_colour_pct = body.product_fee_colour_pct
     if body.bank_institution_no is not None:
         p.bank_institution_no = body.bank_institution_no
     if body.bank_transit_no is not None:
@@ -969,17 +1010,17 @@ async def get_payroll(
         month=month,
         pay_type=line.pay_type,
         scheduled_hours=line.scheduled_hours,
-        styling_revenue=0.0,
-        styling_item_count=0,
-        colour_revenue=0.0,
-        colour_item_count=0,
+        styling_revenue=line.styling_revenue,
+        styling_item_count=line.styling_item_count,
+        colour_revenue=line.colour_revenue,
+        colour_item_count=line.colour_item_count,
         other_service_revenue=0.0,
-        gross_service_revenue=line.service_commission,
-        styling_product_fee=0.0,
-        colour_product_fee=0.0,
-        total_product_fees=0.0,
-        net_service_revenue=line.service_commission,
-        commission_tier_applied=None,
+        gross_service_revenue=line.gross_service_revenue,
+        styling_product_fee=line.styling_product_fee,
+        colour_product_fee=line.colour_product_fee,
+        total_product_fees=line.total_product_fees,
+        net_service_revenue=line.net_service_revenue,
+        commission_tier_applied=line.commission_tier_applied,
         commission_on_services=line.service_commission,
         retail_revenue=line.retail_revenue,
         retail_commission=line.retail_commission,
