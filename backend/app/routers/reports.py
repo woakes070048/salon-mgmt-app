@@ -547,7 +547,8 @@ async def payroll_detail_report(
     from app.models.client import Client
     from app.models.appointment import AppointmentItem
     from app.models.service import Service, ServiceCategory
-    from app.models.provider import Provider as Prov, ProviderServicePrice, ProviderSchedule, ProviderScheduleException
+    from app.models.provider_service_price import ProviderServicePrice
+    from app.models.schedule import ProviderSchedule, ProviderScheduleException
     from sqlalchemy import cast
     from sqlalchemy.types import Date as SADate
 
