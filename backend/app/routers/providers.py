@@ -311,8 +311,9 @@ async def _calc_payroll_line(
         if is_colour:
             colour_revenue += row.line_total
             colour_count += 1
-            # default_cost is a % of the provider's standard price for this service
-            colour_fee += effective_price * default_cost / D("100")
+            # default_cost is a % of the actual charged amount (not standard price)
+            # so a discounted application correctly yields a smaller product fee
+            colour_fee += D(str(row.line_total)) * default_cost / D("100")
         else:
             styling_revenue += row.line_total
             styling_count += 1

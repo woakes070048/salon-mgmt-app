@@ -613,8 +613,9 @@ async def payroll_detail_report(
         qty = D(str(int(r.quantity or 1)))
 
         if is_col:
-            # Fee = standard_price × cost% × qty (qty handles multi-unit line items)
-            fee = eff_price * default_cost / D("100") * qty
+            # Fee = actual_charged × cost% (gross already includes qty effect)
+            # Using actual charge so discounted applications yield smaller fees
+            fee = gross * default_cost / D("100")
             colour_gross += gross; colour_fees += fee
         else:
             fee = default_cost * qty  # flat per service application × qty
