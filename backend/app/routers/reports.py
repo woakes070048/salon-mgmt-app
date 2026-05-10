@@ -576,6 +576,7 @@ async def payroll_detail_report(
             Sale.completed_at,
             Client.first_name, Client.last_name,
             SaleItem.line_total,
+            SaleItem.quantity,
             Service.name.label("service_name"),
             Service.id.label("service_id"),
             Service.default_cost,
@@ -609,12 +610,14 @@ async def payroll_detail_report(
         eff_price = D(str(psp_price_map.get(sid, float(r.default_price or 0))))
         default_cost = D(str(float(r.default_cost or 0)))
         gross = D(str(r.line_total))
+        qty = D(str(int(r.quantity or 1)))
 
         if is_col:
-            fee = eff_price * default_cost / D("100")
+            # Fee = standard_price × cost% × qty (qty handles multi-unit line items)
+            fee = eff_price * default_cost / D("100") * qty
             colour_gross += gross; colour_fees += fee
         else:
-            fee = default_cost  # flat per service
+            fee = default_cost * qty  # flat per service application × qty
             styling_gross += gross; styling_fees += fee
 
         service_rows.append(PayrollServiceRow(
