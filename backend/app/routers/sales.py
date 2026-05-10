@@ -48,6 +48,7 @@ class SaleItemIn(BaseModel):
     # Exactly one of appointment_item_id or retail_item_id must be set
     appointment_item_id: str | None = None
     retail_item_id: str | None = None
+    commission_provider_id: str | None = None  # which provider earns retail commission
     quantity: int = 1          # for retail items; always 1 for service items
     unit_price: Decimal
     discount_amount: Decimal = Decimal("0")
@@ -427,7 +428,7 @@ async def create_sale(
                 retail_item_id=uuid.UUID(in_item.retail_item_id) if in_item.retail_item_id else None,
                 retail_item_name=ri.name if ri else "Retail item",
                 description=desc,
-                provider_id=None,
+                provider_id=uuid.UUID(in_item.commission_provider_id) if in_item.commission_provider_id else None,
                 promotion_id=promo_uuid if promo_uuid and promo_uuid in promos_by_id else None,
                 sequence=seq,
                 quantity=qty,

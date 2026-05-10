@@ -7,6 +7,7 @@ import { createSale, sendReceipt, type Sale } from '@/api/sales'
 import { listPaymentMethods } from '@/api/paymentMethods'
 import { listPromotions, applyPromotion, type Promotion } from '@/api/promotions'
 import { listRetailItems, type RetailItem } from '@/api/retailItems'
+import { listProviders } from '@/api/providers'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
@@ -23,6 +24,7 @@ interface ItemDraft {
   retail_item_id: string | null
   description: string
   providerName: string
+  commissionProviderId: string | null  // which provider earns retail commission
   quantity: number
   unitPrice: string
   discount: string        // always dollar amount used for calculations
@@ -73,6 +75,12 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
     queryFn: () => listRetailItems(true),
   })
 
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: listProviders,
+  })
+  const activeProviders = providers.filter(p => p.has_appointments)
+
   const [items, setItems] = useState<ItemDraft[]>(() =>
     appointment.items.map(it => ({
       kind: 'service' as const,
@@ -80,6 +88,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       retail_item_id: null,
       description: it.service.name,
       providerName: it.provider.display_name,
+      commissionProviderId: null,
       quantity: 1,
       unitPrice: it.price.toFixed(2),
       discount: '0.00',
@@ -117,6 +126,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
         retail_item_id: null,
         description: it.service.name,
         providerName: it.provider.display_name,
+      commissionProviderId: null,
         quantity: 1,
         unitPrice: it.price.toFixed(2),
         discount: '0.00',
@@ -190,6 +200,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       retail_item_id: ri.id,
       description: ri.name,
       providerName: '',
+      commissionProviderId: null,
       quantity: 1,
       unitPrice: parseFloat(ri.default_price).toFixed(2),
       discount: '0.00',
@@ -255,6 +266,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       items: items.map(i => ({
         appointment_item_id: i.appointment_item_id ?? null,
         retail_item_id: i.retail_item_id ?? null,
+        commission_provider_id: i.kind === 'retail' ? (i.commissionProviderId ?? null) : null,
         quantity: i.quantity,
         unit_price: fmt(toMoney(i.unitPrice)),
         discount_amount: fmt(toMoney(i.discount)),
@@ -397,6 +409,21 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
                     <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive text-lg leading-none">×</button>
                   )}
                 </div>
+                {it.kind === 'retail' && (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Commission to</label>
+                    <select
+                      value={it.commissionProviderId ?? ''}
+                      onChange={e => updateItem(idx, { commissionProviderId: e.target.value || null })}
+                      className="w-full border border-input rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
+                    >
+                      <option value="">— no commission —</option>
+                      {activeProviders.map(p => (
+                        <option key={p.id} value={p.id}>{p.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {promotions.length > 0 && (
                   <div>
                     <label className="text-xs text-muted-foreground">{t('checkout.promotion_label')}</label>

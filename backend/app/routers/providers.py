@@ -336,19 +336,10 @@ async def _calc_payroll_line(
     commission_on_services = net_service_revenue * rate_pct / D("100")
 
     # ── Retail revenue ────────────────────────────────────────────────────────
-    provider_sale_ids_q = (
-        select(SaleItem.sale_id)
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(
-            SaleItem.tenant_id == tid,
-            SaleItem.provider_id == pid,
-            SaleItem.kind == SaleItemKind.service,
-            Sale.status == SaleStatus.completed,
-            cast(Sale.completed_at, SADate) >= period_start,
-            cast(Sale.completed_at, SADate) <= period_end,
-        )
-        .distinct()
-    )
+    # Commission goes only to the provider directly attributed on each retail
+    # item (sale_items.provider_id) — NOT to every provider who shared the
+    # appointment. This matches Milano: the Staff column on each receipt line
+    # determines who earns the retail commission.
     retail_total = (
         await db.execute(
             select(func.coalesce(func.sum(SaleItem.line_total), D("0")))
@@ -356,12 +347,8 @@ async def _calc_payroll_line(
             .where(
                 SaleItem.tenant_id == tid,
                 SaleItem.kind == SaleItemKind.retail,
-                # Include retail from service-based sales AND directly-attributed
-                # retail (e.g. walk-in product sale with no appointment)
-                or_(
-                    SaleItem.sale_id.in_(provider_sale_ids_q),
-                    SaleItem.provider_id == pid,
-                ),
+                SaleItem.provider_id == pid,
+                Sale.status == SaleStatus.completed,
                 cast(Sale.completed_at, SADate) >= period_start,
                 cast(Sale.completed_at, SADate) <= period_end,
             )
