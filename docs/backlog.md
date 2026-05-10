@@ -905,125 +905,109 @@ Figures reconcile between SalonOS and Milano for the parallel run period. Confir
 
 ## Payment Processor Reconciliation
 
-End-of-day and period reconciliation between SalonOS-recorded payments and processor settlement data. Supports two operating models that can coexist within the same tenant:
+End-of-day reconciliation between SalonOS-recorded payments and processor settlement data. Supports two operating models that coexist within the same tenant:
 
-**Airgapped model (Salon Lyol today):** A physical terminal (TD Merchant / Clover) handles all card processing. Staff record payment type in SalonOS checkout manually — VISA, MASTERCARD, DEBIT, CASH, etc. SalonOS never touches card data. At end of day, the owner imports the terminal's batch settlement file and compares it against SalonOS records. Cash is counted separately (P2-8).
+**Airgapped model (Salon Lyol today):** A physical terminal (TD Merchant / Clover) handles all card processing. Staff record payment type in SalonOS checkout manually — VISA, MASTERCARD, DEBIT, CASH, etc. SalonOS never touches card data. At end of day, the owner reads batch totals off the terminal paper printout and enters them into SalonOS. SalonOS compares against its own totals and surfaces variances. Cash is counted separately (P2-8 already handles this).
 
-**Integrated model (ecommerce, future in-person):** SalonOS initiates or captures the payment directly (e.g., Stripe for online orders). The payment intent ID is stored and reconciliation against Stripe settlements is automatic.
+**Integrated model (ecommerce, future in-person):** SalonOS initiates or captures the payment directly (Stripe for online orders). The payment intent ID is stored and reconciliation against Stripe settlements is automatic — no manual entry needed.
 
-Both models produce the same reconciliation output — matched transactions, discrepancies, merchant fees — the source of the settlement data is just different (CSV upload vs. API).
+**v1 priority:** Batch-level entry from the paper printout — same concept as the cash till, just for card methods. This replaces the manual spreadsheet/paper comparison the owner does today.
+
+**v2:** Transaction-level matching via Clover API (once Salon Lyol migrates from TD) and Stripe API (for ecommerce). Enables individual transaction matching and automatic chargeback identification — not needed to replace the current workflow.
 
 ---
 
 ### PROC-1 · Processor account configuration
 
-Tenant configures which payment processors they use and how SalonOS maps to them.
+Tenant configures which payment processors they use and how SalonOS payment methods map to them.
 
 **Settings → Payment Processors tab (new):**
-- List of configured processor accounts, each with:
-  - Processor type: `TD Merchant` | `Clover` | `Stripe` | `Square` | `Other`
+- List of processor accounts, each with:
+  - Processor type: `Clover` | `Stripe` | `TD Merchant` | `Square` | `Other`
   - Label (e.g., "Clover — in-person", "Stripe — online store")
-  - Merchant / account ID
+  - Merchant / account ID (for reference; required for API sync in v2)
   - Operating model: `airgapped` | `integrated`
   - Active toggle
-- Each processor account maps to one or more SalonOS payment methods (e.g., "Clover — in-person" covers VISA, MASTERCARD, DEBIT methods; "Cash" is not mapped to any processor account)
-- This mapping is what the reconciliation engine uses to pull the right SalonOS-side transactions for comparison
+- Payment method mapping: which SalonOS payment methods this processor covers (e.g., VISA + MASTERCARD + DEBIT → Clover; cash is not mapped to any processor)
 
 **Data model:**
 - `ProcessorAccount`: `id`, `tenant_id`, `processor` (enum), `label`, `merchant_id`, `model` (`airgapped` | `integrated`), `is_active`
-- `ProcessorPaymentMethodMap`: `processor_account_id`, `payment_method_id` — which SalonOS payment methods this processor handles
+- `ProcessorPaymentMethodMap`: `processor_account_id`, `payment_method_id`
 
 ---
 
-### PROC-2 · Settlement import (CSV upload — airgapped model)
+### PROC-2 · End-of-day batch entry (airgapped model — v1)
 
-Staff uploads the processor's end-of-batch settlement file. SalonOS parses it and stores individual transactions for matching.
+Staff enters the totals from the terminal's paper batch printout. SalonOS compares against its own recorded totals and shows variances. Same concept as the cash till (P2-8).
 
-**UI:** Settings → Payment Processors → select account → "Import settlement" → file picker + settlement date → upload.
+**UI — Reconciliation page (`/reports/processor-reconciliation`):**
+- Date selector (defaults to today) + processor account selector
+- For the selected date and processor, show a simple entry form:
 
-**Parsing:**
-- Processor-specific column mapping configured per processor type (TD Merchant, Clover, and Other each have a configurable mapping: which column is date, amount, card type, auth code, reference number)
-- On upload, rows are parsed into `ProcessorTransaction` records and linked to a `ProcessorSettlement` record for the batch
-- Duplicate detection: skip rows where `(processor_account_id, reference_number)` already exists
+| Card type | Terminal total (enter) | SalonOS total (computed) | Variance |
+|-----------|----------------------|--------------------------|----------|
+| VISA      | $___                 | $240.00                  | —        |
+| Mastercard| $___                 | $185.50                  | —        |
+| Debit     | $___                 | $310.25                  | —        |
+| **Total** |                      | $735.75                  |          |
+
+- Optional: **Fees** field — total merchant fees from the paper report (batch fee or estimated from rate)
+- "Save" stores the entry; variance cells populate and highlight non-zero values in amber/red
+- Net revenue = SalonOS card total − fees (shown once fees are entered)
 
 **Data model:**
-- `ProcessorSettlement`: `id`, `tenant_id`, `processor_account_id`, `settlement_date`, `batch_number` (nullable), `gross_amount`, `fee_amount` (nullable — not all CSV formats include per-batch fees), `net_amount` (nullable), `source` (`csv_upload` | `api_sync`), `status` (`pending` | `matched` | `has_discrepancies`), `imported_at`
-- `ProcessorTransaction`: `id`, `tenant_id`, `settlement_id`, `transaction_date`, `transaction_time` (nullable), `card_type` (nullable), `auth_code` (nullable), `reference_number`, `amount`, `fee_amount` (nullable), `match_status` (`unmatched` | `matched` | `manual_match` | `flagged`), `matched_sale_payment_id` (nullable FK → `sale_payments`)
+- `ProcessorBatchEntry`: `id`, `tenant_id`, `processor_account_id`, `entry_date`, `entered_by_user_id`, `total_fee_amount` (nullable), `notes`, `created_at`
+- `ProcessorBatchEntryLine`: `id`, `batch_entry_id`, `payment_method_id`, `terminal_amount`, `salonos_amount` (snapshot at entry time), `variance`
+
+**History:** last 30 days of entries shown below the form (same pattern as the cash till history).
 
 ---
 
-### PROC-3 · Matching engine and reconciliation report
+### PROC-3 · Reconciliation report and net revenue
 
-After a settlement import, the matching engine compares processor transactions against SalonOS-recorded payments and surfaces discrepancies.
+Unified view of card settlement vs. SalonOS totals, and merchant fee impact on reported revenue.
 
-**Matching algorithm:**
-1. For each `ProcessorTransaction` in the settlement, find `SalePayment` records on the same tenant where:
-   - `payment_method` maps to the processor account (via `ProcessorPaymentMethodMap`)
-   - `amount` matches exactly (or within a configurable tolerance, e.g. ±$0.01 for rounding)
-   - `created_at` date matches the transaction date (± 1 day to handle timezone edge cases)
-2. If exactly one match: auto-match, set `match_status = matched`
-3. If ambiguous (multiple candidates): flag for manual review
-4. Unmatched processor transactions (in settlement, not in SalonOS): likely a terminal sale not recorded in SalonOS
-5. Unmatched SalonOS payments (in SalonOS, not in settlement): possible void, chargeback, or entry error
-
-**Reconciliation report page (`/reports/processor-reconciliation`):**
-- Date range + processor account selector
-- Summary: Total processor gross · Total SalonOS recorded · Variance · Merchant fees · Net
-- Three sections:
-  - **Matched** — transaction count and total (collapsed by default)
-  - **In processor, not in SalonOS** — likely unrecorded sales; each row shows date, amount, card type, auth code
-  - **In SalonOS, not in processor** — likely voids/chargebacks not reflected; each row shows SalonOS sale, payment method, amount
-- Manual match: staff can drag/link an unmatched pair with a note
+**Reconciliation report (extends `/reports/processor-reconciliation`):**
+- Date range selector
+- Per-processor account: terminal total · SalonOS total · variance · fees · net
+- Flags any day with a non-zero variance
 - Export to CSV
 
----
-
-### PROC-4 · Merchant fee tracking and net revenue reporting
-
-Actual processor fees recorded per settlement and surfaced in the sales report.
-
-**Fee entry:**
-- On settlement import, if the CSV includes a fee column, fees are parsed per transaction
-- If fees are batch-level only (one fee for the whole batch), a single fee record is stored against the `ProcessorSettlement`
-- Staff can also manually enter the batch fee when importing (common for TD/Clover monthly statements)
-
 **Sales report integration (updates P2-5):**
-- New "Processor fees" section at the bottom of the sales report (below payment reconciliation):
-  - Per-processor account: gross card sales · processor fees · net card sales
+- New "Processor fees" section at the bottom of the sales report:
+  - Per-processor: gross card sales · fees entered · net card sales
   - Cash: gross (no fee)
-  - **Net revenue after fees** — the number that matters for profitability
-- Merchant fees shown as a line item in the payroll % calculation: `Payroll % of Net Revenue (after fees)` alongside the current `% of Net Sales`
-
-**Note:** If no settlement has been imported for a period, the fees section shows "No processor settlement on file — import to see net revenue."
-
----
-
-### PROC-5 · Stripe settlement sync (integrated model — API)
-
-For tenants using Stripe (ecommerce, Phase 6), reconciliation is automatic — no CSV upload needed.
-
-- Nightly Cloud Scheduler job: `POST /internal/sync-stripe-settlements`
-- Pulls Stripe `BalanceTransaction` objects for the previous day filtered to `type=charge` and `type=refund`
-- Creates `ProcessorSettlement` + `ProcessorTransaction` rows, matched to `orders.stripe_payment_intent_id` automatically
-- Fees pulled directly from Stripe's `BalanceTransaction.fee` field — no manual entry
-- Reconciliation report shows Stripe transactions as auto-matched; only chargebacks or disputes surface as discrepancies
-
-**Depends on:** Phase 6 ecommerce (E-4 Stripe integration).
+  - **Net revenue after fees**
+- Payroll % shown against both gross and net: `Payroll % of Gross Sales` and `Payroll % of Net Revenue`
+- If no batch entry exists for a period: "No settlement on file — enter terminal totals to see net revenue"
 
 ---
 
-### PROC-6 · Clover settlement sync (airgapped model — API, v2)
+### PROC-4 · Stripe settlement sync (integrated model — API)
 
-Replaces the CSV upload for Clover-equipped tenants with an automatic nightly pull.
+For tenants using Stripe (ecommerce, Phase 6), reconciliation is automatic — no manual entry.
+
+- Nightly Cloud Scheduler job pulls Stripe `BalanceTransaction` objects for the previous day
+- Creates a `ProcessorBatchEntry` automatically with fee data from `BalanceTransaction.fee`
+- Matched to `orders.stripe_payment_intent_id` — discrepancies only surface for disputes/chargebacks
+- Feeds directly into the PROC-3 net revenue report
+
+**Depends on:** Phase 6 ecommerce (E-4).
+
+---
+
+### PROC-5 · Clover API sync (airgapped → automated, v2)
+
+Replaces manual batch entry for Clover-equipped tenants with a nightly automatic pull.
 
 - Clover REST API: `GET /v3/merchants/{mId}/payments` filtered by date
-- Requires Clover API key stored in Secret Manager per tenant
-- Same `ProcessorSettlement` / `ProcessorTransaction` model as CSV import — reconciliation report is identical
-- Fee data: Clover provides per-transaction fees via the API
+- Creates `ProcessorBatchEntry` + per-method lines automatically from settled transaction data
+- Fee data from Clover API per transaction, aggregated to batch level
+- Once live, manual entry is no longer needed — staff can still override if the API data looks wrong
 
-**Note:** The Fiserv/TD migration (announced July 2025) moves TD Merchant accounts to Clover. Once Salon Lyol's account migrates, this endpoint replaces the TD CSV workflow. TD itself does not have a public settlements API.
+**Context:** The TD → Fiserv/Clover migration (announced July 2025, closing late fiscal 2025) moves Salon Lyol's terminal to Clover. This endpoint becomes available once that migration completes. TD itself has no public settlements API, which is why v1 uses manual entry.
 
-**Depends on:** PROC-1, PROC-2 (shared data model); Clover API credentials configured per tenant.
+**Depends on:** PROC-1; Clover API credentials in Secret Manager.
 
 ---
 
