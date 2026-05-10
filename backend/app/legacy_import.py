@@ -563,6 +563,10 @@ async def import_receipts(
                 qty = int(item.get("Quantity") or 1)
                 kind = "service" if _is_service(desc) else "retail"
                 provider_id = provider_map.get(staff) if staff else None
+                # Milano exports Amount as the LINE TOTAL (subtotal), not unit price.
+                # GST = Amount × 5% confirms this for all qty>1 records.
+                line_total = Decimal(str(round(amount, 2)))
+                unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total
                 await db.execute(
                     text("INSERT INTO sale_items (id, tenant_id, sale_id, appointment_item_id,"
                          " description, provider_id, kind, sequence, quantity,"
@@ -573,8 +577,8 @@ async def import_receipts(
                     {"id": uuid.uuid4(), "tid": tenant_id, "sale_id": sale_id,
                      "desc": desc, "prov_id": provider_id,
                      "kind": kind, "seq": idx + 1, "qty": qty,
-                     "unit_price": Decimal(str(round(amount, 2))),
-                     "line_total": Decimal(str(round(amount * qty, 2)))},
+                     "unit_price": unit_price,
+                     "line_total": line_total},
                 )
 
             await db.execute(
@@ -738,6 +742,9 @@ async def import_receipts(
             provider_id = provider_map.get(staff) if staff else None
             # Only link to appointment_item when we created them (new appointment path)
             ai_id = receipt_item_to_appt_item.get(idx) if not use_existing else None
+            # Milano exports Amount as the LINE TOTAL, not unit price (confirmed by GST pattern).
+            line_total = Decimal(str(round(amount, 2)))
+            unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total
 
             await db.execute(
                 text("INSERT INTO sale_items (id, tenant_id, sale_id, appointment_item_id,"
@@ -749,8 +756,8 @@ async def import_receipts(
                 {"id": uuid.uuid4(), "tid": tenant_id, "sale_id": sale_id,
                  "ai_id": ai_id, "desc": desc, "prov_id": provider_id,
                  "kind": kind, "seq": idx + 1, "qty": qty,
-                 "unit_price": Decimal(str(round(amount, 2))),
-                 "line_total": Decimal(str(round(amount * qty, 2)))},
+                 "unit_price": unit_price,
+                 "line_total": line_total},
             )
 
         # Link sale → appointment
