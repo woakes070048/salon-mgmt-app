@@ -135,7 +135,7 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen bg-muted/30">
-      <nav className={`${sidebarOpen ? 'w-56' : 'w-12'} flex-shrink-0 bg-white border-r flex flex-col transition-[width] duration-200`}>
+      <nav className={`${sidebarOpen ? 'w-56' : 'w-12'} flex-shrink-0 bg-white border-r flex flex-col transition-[width] duration-200 print:hidden`}>
 
         {/* Logo / header */}
         {sidebarOpen ? (

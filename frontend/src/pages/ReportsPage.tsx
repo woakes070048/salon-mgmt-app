@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, addMonths, subMonths, endOfMonth } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useDateLocale } from '@/lib/dateLocale'
 import { getMonthlyReport } from '@/api/reports'
@@ -85,9 +85,9 @@ export default function ReportsPage() {
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
 
         {/* Header + month nav */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between print:block">
           <h1 className="text-xl font-semibold">{t('reports.sales_title')}</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 print:hidden">
             <Button variant="outline" size="icon" onClick={() => setCursor(subMonths(cursor, 1))}>
               <ChevronLeft size={16} />
             </Button>
@@ -97,7 +97,13 @@ export default function ReportsPage() {
             <Button variant="outline" size="icon" onClick={() => setCursor(addMonths(cursor, 1))} disabled={isCurrentMonth}>
               <ChevronRight size={16} />
             </Button>
+            <Button variant="outline" size="icon" onClick={() => window.print()} title="Print / Save PDF">
+              <Printer size={16} />
+            </Button>
           </div>
+          <p className="hidden print:block text-sm text-muted-foreground">
+            {format(cursor, 'MMMM yyyy', { locale })}
+          </p>
         </div>
 
         {isLoading ? (

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns'
-import { Download } from 'lucide-react'
+import { Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getTransactionReport, type TransactionLineItem } from '@/api/reports'
 
@@ -73,7 +73,7 @@ export default function TransactionReportPage() {
 
         <div className="flex items-center justify-between flex-wrap gap-4">
           <h1 className="text-xl font-semibold">Transaction Report</h1>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap print:hidden">
             <div className="flex items-center gap-2 text-sm">
               <label className="text-muted-foreground">From</label>
               <input
@@ -94,15 +94,27 @@ export default function TransactionReportPage() {
               Run
             </Button>
             {data && data.items.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => downloadCsv(data.items, query.start, query.end)}
-                className="gap-1.5"
-              >
-                <Download size={14} />
-                Export CSV
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadCsv(data.items, query.start, query.end)}
+                  className="gap-1.5 print:hidden"
+                >
+                  <Download size={14} />
+                  Export CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.print()}
+                  className="gap-1.5 print:hidden"
+                  title="Print / Save PDF"
+                >
+                  <Printer size={14} />
+                  Print
+                </Button>
+              </>
             )}
           </div>
         </div>

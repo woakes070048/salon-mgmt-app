@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, subMonths } from 'date-fns'
-import { Download } from 'lucide-react'
+import { Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { listProviders } from '@/api/providers'
 import { getPayrollDetail } from '@/api/reports'
@@ -90,14 +90,19 @@ export default function PayrollDetailPage() {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <h1 className="text-xl font-semibold">Payroll Detail</h1>
           {data && (
-            <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
-              <Download size={14} />Export CSV
-            </Button>
+            <div className="flex gap-2 print:hidden">
+              <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
+                <Download size={14} />Export CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5" title="Print / Save PDF">
+                <Printer size={14} />Print
+              </Button>
+            </div>
           )}
         </div>
 
         {/* Controls */}
-        <div className="bg-white border rounded-lg p-4 flex flex-wrap gap-4 items-end">
+        <div className="bg-white border rounded-lg p-4 flex flex-wrap gap-4 items-end print:hidden">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground uppercase tracking-wide">Provider</label>
             <select
