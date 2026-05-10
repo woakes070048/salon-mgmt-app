@@ -64,3 +64,30 @@ export interface PettyCashReport {
 export function getPettyCashReport(year: number, month: number): Promise<PettyCashReport> {
   return api.get<PettyCashReport>(`/reports/petty-cash?year=${year}&month=${month}`)
 }
+
+export interface TransactionLineItem {
+  sale_id: string
+  sale_date: string
+  client_name: string
+  provider_name: string | null
+  kind: string
+  description: string
+  quantity: number
+  unit_price: string
+  discount: string
+  line_total: string
+  gst: string | null
+  pst: string | null
+  sale_total: string | null
+}
+
+export interface TransactionReport {
+  period_start: string
+  period_end: string
+  items: TransactionLineItem[]
+  grand_total: string
+}
+
+export function getTransactionReport(start: string, end: string): Promise<TransactionReport> {
+  return api.get<TransactionReport>(`/reports/transactions?start=${start}&end=${end}`)
+}

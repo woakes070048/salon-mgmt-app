@@ -45,6 +45,7 @@ import UsersPage from '@/pages/UsersPage'
 import TillPage from '@/pages/TillPage'
 import RetailPage from '@/pages/RetailPage'
 import ReportsPage from '@/pages/ReportsPage'
+import TransactionReportPage from '@/pages/TransactionReportPage'
 import DataImportPage from '@/pages/DataImportPage'
 import LoginLogsPage from '@/pages/LoginLogsPage'
 
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/reports" element={<Navigate to="/reports/sales" replace />} />
         <Route path="/reports/sales" element={<ReportsPage />} />
+        <Route path="/reports/transactions" element={<TransactionReportPage />} />
         <Route path="/reports/payroll" element={<PayrollReportPage />} />
         <Route path="/reports/petty-cash" element={<PettyCashReportPage />} />
         <Route path="/payroll" element={<Navigate to="/reports/payroll" replace />} />

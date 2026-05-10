@@ -6,7 +6,7 @@ import { useAuth } from '@/store/auth'
 import { useLanguage } from '@/store/language'
 import {
   Home, CalendarDays, Users, ClipboardList, Settings, LogOut,
-  ShieldCheck, Scissors, Vault, ShoppingBag, DollarSign, UserCog,
+  ShieldCheck, Scissors, Vault, ShoppingBag, DollarSign, UserCog, List,
   ChevronRight, Receipt, Coins, Upload, ScrollText, User,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
@@ -205,9 +205,10 @@ export default function AppShell() {
 
                       <SubNavLabel label={t('nav.finance')} />
                       <SubNavLink to="/till"               icon={Vault}      label={t('nav.till')}       />
-                      <SubNavLink to="/reports/sales"      icon={Receipt}    label={t('nav.sales')}      />
-                      <SubNavLink to="/reports/payroll"    icon={DollarSign} label={t('nav.payroll')}    />
-                      <SubNavLink to="/reports/petty-cash" icon={Coins}      label={t('nav.petty_cash')} />
+                      <SubNavLink to="/reports/sales"         icon={Receipt}    label={t('nav.sales')}         />
+                      <SubNavLink to="/reports/transactions"  icon={List}       label="Transactions"            />
+                      <SubNavLink to="/reports/payroll"       icon={DollarSign} label={t('nav.payroll')}        />
+                      <SubNavLink to="/reports/petty-cash"    icon={Coins}      label={t('nav.petty_cash')}     />
 
                       <SubNavLabel label={t('nav.settings')} />
                       <SubNavLink to="/settings" icon={Settings} label={t('nav.settings')} />

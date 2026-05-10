@@ -361,3 +361,128 @@ async def petty_cash_report(
     total = sum((Decimal(e.amount) for e in entries), Decimal("0"))
 
     return PettyCashReport(year=year, month=month, entries=entries, total=_d(total))
+
+
+# ── Transaction detail report ─────────────────────────────────────────────────
+
+class TransactionLineItem(BaseModel):
+    sale_id: str
+    sale_date: str            # YYYY-MM-DD
+    client_name: str
+    provider_name: str | None
+    kind: str                 # service | retail
+    description: str
+    quantity: int
+    unit_price: str
+    discount: str
+    line_total: str
+    # Sale-level totals — only populated on the last item of each sale
+    gst: str | None = None
+    pst: str | None = None
+    sale_total: str | None = None
+
+
+class TransactionReport(BaseModel):
+    period_start: str
+    period_end: str
+    items: list[TransactionLineItem]
+    grand_total: str
+
+
+@router.get("/transactions", response_model=TransactionReport)
+async def transaction_report(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end: str = Query(..., description="YYYY-MM-DD"),
+) -> TransactionReport:
+    from app.models.client import Client
+    from sqlalchemy import and_, outerjoin
+
+    tid = current_user.tenant_id
+    start_dt = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    end_dt = datetime.strptime(end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+
+    rows = (await db.execute(
+        select(
+            Sale.id,
+            Sale.completed_at,
+            Sale.gst_amount,
+            Sale.pst_amount,
+            Sale.total,
+            Client.first_name,
+            Client.last_name,
+            SaleItem.sequence,
+            SaleItem.kind,
+            SaleItem.description,
+            SaleItem.quantity,
+            SaleItem.unit_price,
+            SaleItem.discount_amount,
+            SaleItem.line_total,
+            SaleItem.provider_id,
+        )
+        .join(Client, Client.id == Sale.client_id)
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .where(
+            Sale.tenant_id == tid,
+            Sale.status == SaleStatus.completed,
+            Sale.completed_at >= start_dt,
+            Sale.completed_at <= end_dt,
+        )
+        .order_by(Sale.completed_at, Sale.id, SaleItem.sequence)
+    )).all()
+
+    # Load provider names
+    provider_ids = {r.provider_id for r in rows if r.provider_id}
+    provider_names: dict[uuid.UUID, str] = {}
+    if provider_ids:
+        prows = (await db.execute(
+            select(Provider.id, Provider.display_name)
+            .where(Provider.id.in_(provider_ids))
+        )).all()
+        provider_names = {p.id: p.display_name for p in prows}
+
+    # Group by sale to mark last item with tax totals
+    from collections import defaultdict
+    sale_items: dict[str, list] = defaultdict(list)
+    sale_meta: dict[str, dict] = {}
+    for r in rows:
+        sid = str(r.id)
+        sale_items[sid].append(r)
+        sale_meta[sid] = {
+            "gst": r.gst_amount,
+            "pst": r.pst_amount,
+            "total": r.total,
+        }
+
+    items: list[TransactionLineItem] = []
+    grand_total = Decimal("0")
+    for sid, sale_rows in sale_items.items():
+        meta = sale_meta[sid]
+        grand_total += Decimal(str(meta["total"]))
+        for i, r in enumerate(sale_rows):
+            is_last = i == len(sale_rows) - 1
+            client_name = f"{r.first_name} {r.last_name}".strip()
+            provider = provider_names.get(r.provider_id) if r.provider_id else None
+            items.append(TransactionLineItem(
+                sale_id=sid[-8:].upper(),
+                sale_date=r.completed_at.strftime("%Y-%m-%d"),
+                client_name=client_name,
+                provider_name=provider,
+                kind=r.kind.value if hasattr(r.kind, "value") else str(r.kind),
+                description=r.description,
+                quantity=int(r.quantity or 1),
+                unit_price=_d(r.unit_price),
+                discount=_d(r.discount_amount),
+                line_total=_d(r.line_total),
+                gst=_d(meta["gst"]) if is_last else None,
+                pst=_d(meta["pst"]) if is_last else None,
+                sale_total=_d(meta["total"]) if is_last else None,
+            ))
+
+    return TransactionReport(
+        period_start=start,
+        period_end=end,
+        items=items,
+        grand_total=_d(grand_total),
+    )
