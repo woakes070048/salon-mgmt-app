@@ -540,6 +540,53 @@ Records every successful login (user, timestamp, IP). Viewable by admins under a
 
 ---
 
+### P2-29 · Cashier tracking on sales
+
+Every sale should record who processed the checkout — the cashier — as a distinct field from the service providers on the line items. At Salon Lyol, the person at the desk taking payment is often not the same person who performed the service.
+
+**What to add:**
+- `Sale.cashier_user_id` (FK → `users`, nullable for historical sales) — set at the time `POST /sales` is called, from the JWT of the logged-in user
+- `SaleItem` already has `provider_id` for service attribution; retail items should also carry `commission_provider_id` (who earns the retail commission — currently partially modelled in `CheckoutPanel` as `commissionProviderId` but may not be persisted)
+
+**Backend:**
+- Migration: add `cashier_user_id UUID REFERENCES users(id)` to `sales`
+- `POST /sales`: set `cashier_user_id = current_user.id` automatically — no client input required
+- `GET /sales` + report endpoints: include `cashier_user_id` and resolved name in responses
+
+**Frontend:**
+- Sale summary (P2-6 view): show "Processed by [name]" alongside the payment breakdown
+- Sales report (P2-5): add cashier column to the per-sale breakdown; allow filtering by cashier
+
+**Why it matters:** accountability, dispute resolution, and accurate retail commission attribution when the person at the desk is different from the provider.
+
+---
+
+### P2-30 · Record-level audit trail (created/updated by)
+
+Key tables should record which user created or last modified a record, not just when. Enables accountability, debugging, and audit compliance.
+
+**Scope — tables that warrant this (priority order):**
+1. `sales` — already getting `cashier_user_id` (P2-29); also add `updated_by_user_id` for payment edits
+2. `appointments` — who confirmed, who last modified
+3. `clients` — who created or last edited the client record
+4. `colour_notes` — already has `created_by_user_id` (verify); ensure updates are attributed
+5. `provider_schedules` — who last changed a provider's schedule
+6. `sale_payment_edits` — already has `edited_by_user_id` (audit log pattern already in place for P2-7)
+
+**What to add per table:**
+- `created_by_user_id UUID REFERENCES users(id)` — set once on insert from JWT, never changed
+- `updated_by_user_id UUID REFERENCES users(id)` — set on every mutating operation
+
+**Implementation notes:**
+- FastAPI dependency `CurrentUser` is already available in every router — pass it through to the service layer or set directly in the route handler
+- For tables updated via background jobs (reminder dispatch, briefing engine): set `updated_by_user_id = NULL` — system-initiated changes are distinguished by null
+- No UI changes required for v1 — this is backend + schema only; surface in audit views as needed
+- Migration per table: nullable columns with no backfill required (historical records stay null)
+
+**Out of scope for v1:** full change-history log (who changed what field from X to Y), row-level versioning. Those are a separate audit-log feature if ever needed.
+
+---
+
 ### P-CLEAN · ✅ Complete
 
 All references to the previous salon software have been removed:
