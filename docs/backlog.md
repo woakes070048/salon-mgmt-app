@@ -1116,3 +1116,185 @@ Automate the daily bookkeeping journal entries from SalonOS into QuickBooks Onli
 - Chart of accounts discussion with bookkeeper before go-live to confirm account names/IDs
 
 **Phase:** P4 — after SalonOS is in production at Salon Lyol. Set up in parallel with go-live so the first live day's data flows automatically.
+
+---
+
+## Phase 6 — Retail Ecommerce
+
+Public-facing online store for retail products. Clients browse the salon's retail catalog, add items to cart, and pay online via Stripe. Fulfillment is either in-salon pickup or shipping. No card data ever touches SalonOS servers — Stripe handles PCI compliance (SAQ A).
+
+**Depends on:** P2-12 (retail catalog) and P2-13 (inventory) — both complete.
+
+**Stack additions:** Stripe Payment Intents API · Stripe webhooks · Stripe Elements (frontend) · shipping carrier API (Canada Post / Purolator, v1 can be manual tracking entry)
+
+---
+
+### E-1 · Storefront settings
+
+Tenant configures and enables their online store before it goes live.
+
+**Settings → Ecommerce tab (new):**
+- Enable / disable storefront toggle (storefront is hidden at `/shop` while disabled)
+- Pickup address (pre-populated from tenant contact details, editable)
+- Stripe account connection: "Connect Stripe" OAuth flow; stores `stripe_account_id` in Secret Manager
+- Shipping rates: list of rates with label, amount, and optional free-shipping threshold (e.g. "Standard — $12.00 · Free over $75")
+- Per-item "available online" flag: products not flagged are excluded from the storefront even if active in the catalog
+
+**Data model:**
+- `TenantEcommerceSettings`: `tenant_id` PK, `enabled`, `stripe_account_id` (encrypted), `pickup_enabled`, `pickup_instructions`
+- `ShippingRate`: `id`, `tenant_id`, `label`, `amount`, `free_threshold` (nullable), `is_active`, `sort_order`
+- `RetailItem` gains `available_online` boolean (default false — opt-in per item)
+
+---
+
+### E-2 · Public storefront
+
+Client-facing product catalog at `/shop` on the existing frontend. No login required to browse; account or guest checkout at purchase.
+
+**Storefront pages:**
+- `/shop` — product grid, filterable by category; search
+- `/shop/[item-id]` — product detail: name, description, price, stock status (in stock / low stock / out of stock), photos (if set), "Add to cart"
+- Out of stock items shown but "Add to cart" disabled
+
+**Stock display rules:**
+- In stock: on-hand > 3
+- Low stock: on-hand 1–3
+- Out of stock: on-hand ≤ 0
+
+**API:** new `GET /shop/products` (public, no auth) — returns active + `available_online` retail items with on-hand counts. No auth token required.
+
+---
+
+### E-3 · Shopping cart and checkout flow
+
+Client builds a cart and completes purchase.
+
+**Cart:**
+- Persisted in `localStorage` (no server-side cart in v1)
+- Item count badge in storefront nav
+- Cart page: line items, quantities (editable), subtotal, estimated tax, total
+
+**Checkout:**
+1. **Fulfillment choice:** Pickup at salon (address shown) or Ship to address
+2. **Shipping address form** (if shipping): name, address, city, province, postal, country
+3. **Shipping rate selector** (if shipping): picks from tenant-configured rates; free threshold applied automatically
+4. **Order summary:** items, subtotal, shipping, GST, PST, total
+5. **Payment:** Stripe Elements card form (card data goes directly to Stripe; SalonOS never sees it)
+6. **Place order** → creates `Order` record with `status: pending`, creates Stripe Payment Intent, confirms payment
+
+**Guest vs account:**
+- Guest checkout: name + email required (for order confirmation); no SalonOS account needed
+- Logged-in client: pre-populated from account, order appears in order history
+
+**Tax:** GST (5%) applied to all items; PST (8%) applied unless item is `is_pst_exempt`. For v1 this applies regardless of shipping destination — note as a known limitation (cross-provincial tax treatment deferred).
+
+---
+
+### E-4 · Stripe payment integration
+
+**Payment flow:**
+1. Client submits checkout → `POST /shop/orders` creates `Order` + calls Stripe `PaymentIntents.create` → returns `client_secret` to frontend
+2. Frontend confirms payment using Stripe Elements + `client_secret`
+3. Stripe fires `payment_intent.succeeded` webhook → `POST /webhooks/stripe` updates `Order.status` to `confirmed` and decrements inventory
+4. Order confirmation email sent to client; new order notification sent to staff
+
+**Stripe webhook events handled:**
+- `payment_intent.succeeded` → confirm order, decrement stock, send emails
+- `payment_intent.payment_failed` → mark order `payment_failed`, notify client
+- `charge.refunded` → mark order `refunded`, restore stock
+
+**Backend:**
+- `POST /shop/orders` — public endpoint; validates cart against current catalog + stock; creates order + payment intent
+- `POST /webhooks/stripe` — Stripe signature verified; handles the above events
+- `stripe_payment_intent_id` and `stripe_payment_status` stored on `Order`
+
+---
+
+### E-5 · Shipping
+
+**Staff workflow:**
+- Order detail shows shipping address and current tracking status
+- "Mark shipped" action: enter tracking number + carrier → `Order.status` → `shipped`; client receives shipping notification email with tracking info
+
+**Client experience:**
+- Order confirmation email: order summary + fulfillment type
+- Shipping notification email: tracking number + carrier link
+
+**v1 scope:** manual tracking entry by staff. No carrier API integration — staff enters tracking number after generating label outside SalonOS. Carrier API (Canada Post, Purolator, etc.) is a v2 enhancement.
+
+---
+
+### E-6 · Order management (staff)
+
+Staff process and fulfil incoming orders from a new Orders page.
+
+**Orders page (`/orders`, new nav entry under Finance):**
+- List with filter by status: All · Pending payment · Confirmed · Processing · Ready / Shipped · Delivered · Cancelled
+- Each row: order number, client name, date, items count, total, fulfillment type, status badge
+- Tap/click → order detail
+
+**Order detail:**
+- Items, quantities, prices, totals
+- Client info (name, email, phone if account)
+- Fulfillment: pickup instructions or shipping address + tracking entry
+- Status action buttons: Confirm → Processing → Ready for Pickup (or Shipped) → Delivered
+- Cancel order (triggers Stripe refund via `POST /shop/orders/{id}/cancel`)
+- Print packing slip
+
+**Data model:**
+```
+orders: id, tenant_id, client_id (nullable), guest_name, guest_email,
+        order_number (human-readable, e.g. SL-0042), status, fulfillment_type,
+        subtotal, shipping_cost, gst_amount, pst_amount, total,
+        stripe_payment_intent_id, stripe_payment_status, notes,
+        created_at, updated_at
+
+order_items: id, tenant_id, order_id, retail_item_id, description,
+             quantity, unit_price, line_total, is_gst_exempt, is_pst_exempt
+
+order_shipping_address: id, order_id, recipient_name, address_line1,
+                        address_line2, city, region, postal_code, country,
+                        tracking_number, carrier, shipped_at
+```
+
+---
+
+### E-7 · Order notifications
+
+**Client emails:**
+- Order confirmation (on `payment_intent.succeeded`): order summary, fulfillment instructions, order number
+- Shipping notification (on "Mark shipped"): tracking number, carrier, estimated delivery if available
+- Cancellation / refund confirmation
+
+**Staff notifications:**
+- New order email to configured recipients (same setting as booking request notifications)
+- In-app badge on the Orders nav item for unprocessed orders (same pattern as pending requests badge)
+
+All emails use the existing branded layout (`wrap_branded`).
+
+---
+
+### E-8 · Inventory integration
+
+Stock is reserved on order placement and decremented on payment confirmation. Cancellations restore stock.
+
+- On `POST /shop/orders`: write `kind=reserve` `RetailStockMovement` for each item — reduces available quantity but is visually distinct from a sale
+- On `payment_intent.succeeded`: convert reserve movements to `kind=sell`
+- On order cancellation / `charge.refunded`: write `kind=return` movements to restore stock
+- "Reserve" movements excluded from the sales report (they're not revenue until paid)
+- On-hand display on the storefront uses available stock = on_hand − reserved
+
+**Why reserve rather than decrement immediately:** prevents overselling during the payment window without requiring a cart server.
+
+---
+
+### E-9 · Client order history
+
+Logged-in clients can see past online orders.
+
+- New "Orders" tab in the client portal (wherever the client-facing account page lives)
+- List: order number, date, items, total, status
+- Detail: same as above, read-only
+- Guest orders are not linked to an account (guest email only); account matching deferred to v2
+
+**API:** `GET /shop/orders/mine` — returns orders where `client_id` matches the logged-in user's linked client record.

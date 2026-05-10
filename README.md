@@ -202,6 +202,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 | **3** | AI scheduling · Briefing Engine · Inbound email intake · Multi-tenancy hardening · Beta onboarding | 🔄 In progress |
 | **4** | Provider mobile app (iOS + Android) — schedule, bookings, checkout, payment requests, estimates, schedule change requests · QuickBooks integration | Planned |
 | **5** | Voice AI receptionist · Advanced analytics · Client-facing briefings | Planned |
+| **6** | Retail ecommerce — public storefront, Stripe checkout, pickup + shipping, order management | Planned |
 
 **Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing; Social/SSO login.
 
