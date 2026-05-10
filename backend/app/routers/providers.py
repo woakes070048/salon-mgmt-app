@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -356,7 +356,12 @@ async def _calc_payroll_line(
             .where(
                 SaleItem.tenant_id == tid,
                 SaleItem.kind == SaleItemKind.retail,
-                SaleItem.sale_id.in_(provider_sale_ids_q),
+                # Include retail from service-based sales AND directly-attributed
+                # retail (e.g. walk-in product sale with no appointment)
+                or_(
+                    SaleItem.sale_id.in_(provider_sale_ids_q),
+                    SaleItem.provider_id == pid,
+                ),
                 cast(Sale.completed_at, SADate) >= period_start,
                 cast(Sale.completed_at, SADate) <= period_end,
             )

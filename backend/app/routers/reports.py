@@ -665,7 +665,10 @@ async def payroll_detail_report(
         .where(
             SaleItem.tenant_id == tid,
             SaleItem.kind == SaleItemKind.retail,
-            SaleItem.sale_id.in_(provider_sale_ids_q),
+            or_(
+                SaleItem.sale_id.in_(provider_sale_ids_q),
+                SaleItem.provider_id == pid,  # walk-in retail with no appointment
+            ),
             cast(Sale.completed_at, SADate) >= period_start,
             cast(Sale.completed_at, SADate) <= period_end,
         )
