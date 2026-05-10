@@ -206,6 +206,8 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 
 **Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing; Social/SSO login.
 
+**Payment processor reconciliation (cross-phase):** End-of-day settlement import and matching against SalonOS-recorded payments. Supports airgapped terminals (Clover/TD — CSV upload today, API sync once Clover migration is live) and integrated processors (Stripe for ecommerce). Merchant fee tracking feeds into a net-revenue view on the sales report.
+
 ---
 
 ## By the Numbers

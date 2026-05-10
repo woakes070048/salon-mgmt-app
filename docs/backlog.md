@@ -903,6 +903,130 @@ Figures reconcile between SalonOS and Milano for the parallel run period. Confir
 
 ---
 
+## Payment Processor Reconciliation
+
+End-of-day and period reconciliation between SalonOS-recorded payments and processor settlement data. Supports two operating models that can coexist within the same tenant:
+
+**Airgapped model (Salon Lyol today):** A physical terminal (TD Merchant / Clover) handles all card processing. Staff record payment type in SalonOS checkout manually — VISA, MASTERCARD, DEBIT, CASH, etc. SalonOS never touches card data. At end of day, the owner imports the terminal's batch settlement file and compares it against SalonOS records. Cash is counted separately (P2-8).
+
+**Integrated model (ecommerce, future in-person):** SalonOS initiates or captures the payment directly (e.g., Stripe for online orders). The payment intent ID is stored and reconciliation against Stripe settlements is automatic.
+
+Both models produce the same reconciliation output — matched transactions, discrepancies, merchant fees — the source of the settlement data is just different (CSV upload vs. API).
+
+---
+
+### PROC-1 · Processor account configuration
+
+Tenant configures which payment processors they use and how SalonOS maps to them.
+
+**Settings → Payment Processors tab (new):**
+- List of configured processor accounts, each with:
+  - Processor type: `TD Merchant` | `Clover` | `Stripe` | `Square` | `Other`
+  - Label (e.g., "Clover — in-person", "Stripe — online store")
+  - Merchant / account ID
+  - Operating model: `airgapped` | `integrated`
+  - Active toggle
+- Each processor account maps to one or more SalonOS payment methods (e.g., "Clover — in-person" covers VISA, MASTERCARD, DEBIT methods; "Cash" is not mapped to any processor account)
+- This mapping is what the reconciliation engine uses to pull the right SalonOS-side transactions for comparison
+
+**Data model:**
+- `ProcessorAccount`: `id`, `tenant_id`, `processor` (enum), `label`, `merchant_id`, `model` (`airgapped` | `integrated`), `is_active`
+- `ProcessorPaymentMethodMap`: `processor_account_id`, `payment_method_id` — which SalonOS payment methods this processor handles
+
+---
+
+### PROC-2 · Settlement import (CSV upload — airgapped model)
+
+Staff uploads the processor's end-of-batch settlement file. SalonOS parses it and stores individual transactions for matching.
+
+**UI:** Settings → Payment Processors → select account → "Import settlement" → file picker + settlement date → upload.
+
+**Parsing:**
+- Processor-specific column mapping configured per processor type (TD Merchant, Clover, and Other each have a configurable mapping: which column is date, amount, card type, auth code, reference number)
+- On upload, rows are parsed into `ProcessorTransaction` records and linked to a `ProcessorSettlement` record for the batch
+- Duplicate detection: skip rows where `(processor_account_id, reference_number)` already exists
+
+**Data model:**
+- `ProcessorSettlement`: `id`, `tenant_id`, `processor_account_id`, `settlement_date`, `batch_number` (nullable), `gross_amount`, `fee_amount` (nullable — not all CSV formats include per-batch fees), `net_amount` (nullable), `source` (`csv_upload` | `api_sync`), `status` (`pending` | `matched` | `has_discrepancies`), `imported_at`
+- `ProcessorTransaction`: `id`, `tenant_id`, `settlement_id`, `transaction_date`, `transaction_time` (nullable), `card_type` (nullable), `auth_code` (nullable), `reference_number`, `amount`, `fee_amount` (nullable), `match_status` (`unmatched` | `matched` | `manual_match` | `flagged`), `matched_sale_payment_id` (nullable FK → `sale_payments`)
+
+---
+
+### PROC-3 · Matching engine and reconciliation report
+
+After a settlement import, the matching engine compares processor transactions against SalonOS-recorded payments and surfaces discrepancies.
+
+**Matching algorithm:**
+1. For each `ProcessorTransaction` in the settlement, find `SalePayment` records on the same tenant where:
+   - `payment_method` maps to the processor account (via `ProcessorPaymentMethodMap`)
+   - `amount` matches exactly (or within a configurable tolerance, e.g. ±$0.01 for rounding)
+   - `created_at` date matches the transaction date (± 1 day to handle timezone edge cases)
+2. If exactly one match: auto-match, set `match_status = matched`
+3. If ambiguous (multiple candidates): flag for manual review
+4. Unmatched processor transactions (in settlement, not in SalonOS): likely a terminal sale not recorded in SalonOS
+5. Unmatched SalonOS payments (in SalonOS, not in settlement): possible void, chargeback, or entry error
+
+**Reconciliation report page (`/reports/processor-reconciliation`):**
+- Date range + processor account selector
+- Summary: Total processor gross · Total SalonOS recorded · Variance · Merchant fees · Net
+- Three sections:
+  - **Matched** — transaction count and total (collapsed by default)
+  - **In processor, not in SalonOS** — likely unrecorded sales; each row shows date, amount, card type, auth code
+  - **In SalonOS, not in processor** — likely voids/chargebacks not reflected; each row shows SalonOS sale, payment method, amount
+- Manual match: staff can drag/link an unmatched pair with a note
+- Export to CSV
+
+---
+
+### PROC-4 · Merchant fee tracking and net revenue reporting
+
+Actual processor fees recorded per settlement and surfaced in the sales report.
+
+**Fee entry:**
+- On settlement import, if the CSV includes a fee column, fees are parsed per transaction
+- If fees are batch-level only (one fee for the whole batch), a single fee record is stored against the `ProcessorSettlement`
+- Staff can also manually enter the batch fee when importing (common for TD/Clover monthly statements)
+
+**Sales report integration (updates P2-5):**
+- New "Processor fees" section at the bottom of the sales report (below payment reconciliation):
+  - Per-processor account: gross card sales · processor fees · net card sales
+  - Cash: gross (no fee)
+  - **Net revenue after fees** — the number that matters for profitability
+- Merchant fees shown as a line item in the payroll % calculation: `Payroll % of Net Revenue (after fees)` alongside the current `% of Net Sales`
+
+**Note:** If no settlement has been imported for a period, the fees section shows "No processor settlement on file — import to see net revenue."
+
+---
+
+### PROC-5 · Stripe settlement sync (integrated model — API)
+
+For tenants using Stripe (ecommerce, Phase 6), reconciliation is automatic — no CSV upload needed.
+
+- Nightly Cloud Scheduler job: `POST /internal/sync-stripe-settlements`
+- Pulls Stripe `BalanceTransaction` objects for the previous day filtered to `type=charge` and `type=refund`
+- Creates `ProcessorSettlement` + `ProcessorTransaction` rows, matched to `orders.stripe_payment_intent_id` automatically
+- Fees pulled directly from Stripe's `BalanceTransaction.fee` field — no manual entry
+- Reconciliation report shows Stripe transactions as auto-matched; only chargebacks or disputes surface as discrepancies
+
+**Depends on:** Phase 6 ecommerce (E-4 Stripe integration).
+
+---
+
+### PROC-6 · Clover settlement sync (airgapped model — API, v2)
+
+Replaces the CSV upload for Clover-equipped tenants with an automatic nightly pull.
+
+- Clover REST API: `GET /v3/merchants/{mId}/payments` filtered by date
+- Requires Clover API key stored in Secret Manager per tenant
+- Same `ProcessorSettlement` / `ProcessorTransaction` model as CSV import — reconciliation report is identical
+- Fee data: Clover provides per-transaction fees via the API
+
+**Note:** The Fiserv/TD migration (announced July 2025) moves TD Merchant accounts to Clover. Once Salon Lyol's account migrates, this endpoint replaces the TD CSV workflow. TD itself does not have a public settlements API.
+
+**Depends on:** PROC-1, PROC-2 (shared data model); Clover API credentials configured per tenant.
+
+---
+
 ## Phase 4 — Provider Mobile App (iOS + Android)
 
 React Native + Expo app for individual providers. Consumes the existing SalonOS backend API. Designed for the day-to-day workflow of a stylist — not a replacement for the staff web app, which remains the surface for admin, payroll, settings, and reports.
