@@ -486,3 +486,246 @@ async def transaction_report(
         items=items,
         grand_total=_d(grand_total),
     )
+
+
+# ── Payroll detail report ─────────────────────────────────────────────────────
+
+class PayrollServiceRow(BaseModel):
+    date: str
+    client_name: str
+    service_name: str
+    category: str           # "Styling" | "Colouring" | etc.
+    is_colour: bool
+    gross_amount: str       # what was charged
+    product_fee: str        # deducted from gross before commission
+    net_amount: str         # gross - product_fee
+
+class PayrollRetailRow(BaseModel):
+    date: str
+    client_name: str
+    description: str
+    amount: str
+
+class PayrollDetailReport(BaseModel):
+    provider_id: str
+    provider_name: str
+    period_start: str
+    period_end: str
+    pay_type: str | None
+    pay_basis: str
+    # Service breakdown
+    service_rows: list[PayrollServiceRow]
+    styling_gross: str
+    styling_fees: str
+    colour_gross: str
+    colour_fees: str
+    net_service_revenue: str
+    commission_rate_pct: str
+    commission_on_services: str
+    # Retail
+    retail_rows: list[PayrollRetailRow]
+    retail_gross: str
+    retail_commission_pct: str
+    retail_commission: str
+    # Totals
+    vacation_pct: str
+    gross_before_vacation: str
+    vacation_pay: str
+    gross_pay: str
+
+
+@router.get("/payroll-detail", response_model=PayrollDetailReport)
+async def payroll_detail_report(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    provider_id: str = Query(...),
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end: str = Query(..., description="YYYY-MM-DD"),
+) -> PayrollDetailReport:
+    from datetime import date as _date
+    from decimal import Decimal as D
+    from app.models.client import Client
+    from app.models.appointment import AppointmentItem
+    from app.models.service import Service, ServiceCategory
+    from app.models.provider import Provider as Prov, ProviderServicePrice, ProviderSchedule, ProviderScheduleException
+    from sqlalchemy import cast
+    from sqlalchemy.types import Date as SADate
+
+    tid = current_user.tenant_id
+    pid = uuid.UUID(provider_id)
+    period_start = _date.fromisoformat(start)
+    period_end = _date.fromisoformat(end)
+
+    # Load provider
+    p = (await db.execute(select(Provider).where(Provider.id == pid, Provider.tenant_id == tid))).scalar_one_or_none()
+    if not p:
+        from fastapi import HTTPException as _HE
+        raise _HE(status_code=404, detail="Provider not found")
+
+    # PSP overrides
+    psp_rows = (await db.execute(
+        select(ProviderServicePrice.service_id, ProviderServicePrice.price)
+        .where(ProviderServicePrice.provider_id == pid, ProviderServicePrice.tenant_id == tid)
+    )).all()
+    psp_price_map = {str(r.service_id): float(r.price) for r in psp_rows}
+
+    # ── Individual service transactions ───────────────────────────────────────
+    svc_txn_rows = (await db.execute(
+        select(
+            Sale.completed_at,
+            Client.first_name, Client.last_name,
+            SaleItem.line_total,
+            Service.name.label("service_name"),
+            Service.id.label("service_id"),
+            Service.default_cost,
+            Service.default_price,
+            ServiceCategory.name.label("cat_name"),
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .join(Client, Client.id == Sale.client_id)
+        .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
+        .join(Service, Service.id == AppointmentItem.service_id)
+        .join(ServiceCategory, ServiceCategory.id == Service.category_id)
+        .where(
+            SaleItem.tenant_id == tid,
+            SaleItem.provider_id == pid,
+            SaleItem.kind == SaleItemKind.service,
+            Sale.status == SaleStatus.completed,
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+        )
+        .order_by(Sale.completed_at, Service.name)
+    )).all()
+
+    styling_gross = D("0"); styling_fees = D("0")
+    colour_gross = D("0"); colour_fees = D("0")
+    service_rows: list[PayrollServiceRow] = []
+
+    for r in svc_txn_rows:
+        cat = (r.cat_name or "").lower()
+        is_col = "colour" in cat or "color" in cat or "colouring" in cat
+        sid = str(r.service_id)
+        eff_price = D(str(psp_price_map.get(sid, float(r.default_price or 0))))
+        default_cost = D(str(float(r.default_cost or 0)))
+        gross = D(str(r.line_total))
+
+        if is_col:
+            fee = eff_price * default_cost / D("100")
+            colour_gross += gross; colour_fees += fee
+        else:
+            fee = default_cost  # flat per service
+            styling_gross += gross; styling_fees += fee
+
+        service_rows.append(PayrollServiceRow(
+            date=r.completed_at.strftime("%Y-%m-%d"),
+            client_name=f"{r.first_name} {r.last_name}".strip(),
+            service_name=r.service_name,
+            category=r.cat_name,
+            is_colour=is_col,
+            gross_amount=_d(gross),
+            product_fee=_d(fee),
+            net_amount=_d(gross - fee),
+        ))
+
+    net_service_revenue = styling_gross + colour_gross - styling_fees - colour_fees
+
+    # Commission tier
+    tiers = p.commission_tiers or []
+    applied_tier = None
+    for t in sorted(tiers, key=lambda x: x.get("monthly_threshold", 0)):
+        if float(net_service_revenue) >= t.get("monthly_threshold", 0):
+            applied_tier = t
+    rate_pct = D(str(applied_tier["rate_pct"])) if applied_tier else D("0")
+    commission_on_services = net_service_revenue * rate_pct / D("100")
+
+    # ── Retail transactions from this provider's sales ────────────────────────
+    provider_sale_ids_q = (
+        select(SaleItem.sale_id)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .where(
+            SaleItem.tenant_id == tid, SaleItem.provider_id == pid,
+            SaleItem.kind == SaleItemKind.service,
+            Sale.status == SaleStatus.completed,
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+        ).distinct()
+    )
+    retail_txn_rows = (await db.execute(
+        select(
+            Sale.completed_at,
+            Client.first_name, Client.last_name,
+            SaleItem.description, SaleItem.line_total,
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .join(Client, Client.id == Sale.client_id)
+        .where(
+            SaleItem.tenant_id == tid,
+            SaleItem.kind == SaleItemKind.retail,
+            SaleItem.sale_id.in_(provider_sale_ids_q),
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+        )
+        .order_by(Sale.completed_at)
+    )).all()
+
+    retail_gross = D("0")
+    retail_rows: list[PayrollRetailRow] = []
+    for r in retail_txn_rows:
+        retail_gross += D(str(r.line_total))
+        retail_rows.append(PayrollRetailRow(
+            date=r.completed_at.strftime("%Y-%m-%d"),
+            client_name=f"{r.first_name} {r.last_name}".strip(),
+            description=r.description,
+            amount=_d(r.line_total),
+        ))
+
+    retail_pct = D(str(p.retail_commission_pct or 0))
+    retail_commission = retail_gross * retail_pct / D("100")
+
+    # Pay basis + gross pay
+    pay_type_val = p.pay_type.value if p.pay_type else None
+    vac_pct = D(str(p.vacation_pct or 0))
+    hourly_min = D(str(p.hourly_minimum or 0))
+    total_commission = commission_on_services + retail_commission
+
+    if pay_type_val == "salary":
+        gross_before_vac = D(str(p.pay_amount or 0)) / D("12")
+        pay_basis = "salary"
+    elif pay_type_val == "commission":
+        # Calculate scheduled hours for floor check (simplified)
+        gross_before_vac = total_commission
+        pay_basis = "commission"
+    elif pay_type_val == "hourly":
+        gross_before_vac = D("0")  # hours × rate — needs time entries
+        pay_basis = "hourly"
+    else:
+        gross_before_vac = D("0")
+        pay_basis = "n/a"
+
+    vac_pay = gross_before_vac * vac_pct / D("100")
+    gross_pay = gross_before_vac + vac_pay
+
+    return PayrollDetailReport(
+        provider_id=str(pid),
+        provider_name=p.display_name or f"{p.first_name} {p.last_name}",
+        period_start=start,
+        period_end=end,
+        pay_type=pay_type_val,
+        pay_basis=pay_basis,
+        service_rows=service_rows,
+        styling_gross=_d(styling_gross),
+        styling_fees=_d(styling_fees),
+        colour_gross=_d(colour_gross),
+        colour_fees=_d(colour_fees),
+        net_service_revenue=_d(net_service_revenue),
+        commission_rate_pct=_d(rate_pct),
+        commission_on_services=_d(commission_on_services),
+        retail_rows=retail_rows,
+        retail_gross=_d(retail_gross),
+        retail_commission_pct=_d(retail_pct),
+        retail_commission=_d(retail_commission),
+        vacation_pct=_d(vac_pct),
+        gross_before_vacation=_d(gross_before_vac),
+        vacation_pay=_d(vac_pay),
+        gross_pay=_d(gross_pay),
+    )

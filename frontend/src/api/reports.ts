@@ -91,3 +91,33 @@ export interface TransactionReport {
 export function getTransactionReport(start: string, end: string): Promise<TransactionReport> {
   return api.get<TransactionReport>(`/reports/transactions?start=${start}&end=${end}`)
 }
+
+export interface PayrollServiceRow {
+  date: string; client_name: string; service_name: string
+  category: string; is_colour: boolean
+  gross_amount: string; product_fee: string; net_amount: string
+}
+export interface PayrollRetailRow {
+  date: string; client_name: string; description: string; amount: string
+}
+export interface PayrollDetailReport {
+  provider_id: string; provider_name: string
+  period_start: string; period_end: string
+  pay_type: string | null; pay_basis: string
+  service_rows: PayrollServiceRow[]
+  styling_gross: string; styling_fees: string
+  colour_gross: string; colour_fees: string
+  net_service_revenue: string
+  commission_rate_pct: string; commission_on_services: string
+  retail_rows: PayrollRetailRow[]
+  retail_gross: string; retail_commission_pct: string; retail_commission: string
+  vacation_pct: string; gross_before_vacation: string
+  vacation_pay: string; gross_pay: string
+}
+export function getPayrollDetail(
+  providerId: string, start: string, end: string
+): Promise<PayrollDetailReport> {
+  return api.get<PayrollDetailReport>(
+    `/reports/payroll-detail?provider_id=${providerId}&start=${start}&end=${end}`
+  )
+}
