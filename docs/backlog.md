@@ -926,129 +926,168 @@ Figures reconcile between SalonOS and Milano for the parallel run period. Confir
 
 ## Phase 4 — Provider Mobile App (iOS + Android)
 
-React Native + Expo app for individual providers. Consumes the existing SalonOS backend API — no new endpoints required for the core features. Designed for the day-to-day workflow of a stylist: see today's clients, pull up colour notes, check out, clock in and out.
+React Native + Expo app for individual providers. Consumes the existing SalonOS backend API. Designed for the day-to-day workflow of a stylist — not a replacement for the staff web app, which remains the surface for admin, payroll, settings, and reports.
 
-**Stack:** React Native · Expo (managed workflow) · TypeScript · EAS Build · Expo Push Notifications
+**Stack:** React Native · Expo (managed workflow) · TypeScript · EAS Build
 
-**Scope boundary:** Admin functions (settings, payroll, user management, reports, staff schedules) remain desktop-only. The mobile app is a provider-facing companion, not a replacement for the staff web app.
+**Scope boundary:** Admin functions (settings, payroll, user management, reports) remain desktop-only.
 
-**Auth:** Same JWT backend. Login screen calls `POST /auth/login`; token stored in `expo-secure-store`. The `provider_id` returned by `/me` drives all provider-scoped queries — same logic as the desktop dashboard.
+**Auth:** Same JWT backend. Login screen calls `POST /auth/login`; token stored in `expo-secure-store`. The `provider_id` returned by `/me` drives all provider-scoped queries.
+
+**Navigation:** bottom tab bar — Schedule · Clients · Clock · More
 
 ---
 
-### PM-1 · App shell, auth, and today's schedule
+### PM-1 · App shell, auth, and schedule view
 
-The foundation everything else runs on.
+**Auth:**
+- Login screen: email + password → `POST /auth/login`. Token in `expo-secure-store`; validated on cold launch via `GET /auth/me`.
 
-**Auth flow:**
-- Login screen: email + password → `POST /auth/login`. Token persisted in `expo-secure-store`.
-- On cold launch: validate stored token via `GET /auth/me`; redirect to login if expired.
-- Sign out clears token and returns to login.
-
-**Home screen:**
-- Today's appointment list, scoped to the logged-in provider (`provider_id` from `/me`)
+**Schedule screen (home tab):**
+- Appointment list for the logged-in provider, defaulting to today
+- Date strip at top for navigating to other days (forward and back)
 - Each row: client name, services, start time, status badge
-- Tap an appointment → Appointment detail screen
-- Pull-to-refresh
-- Salon-closed indicator when operating hours mark the day off (same logic as desktop dashboard)
+- Tap → Appointment detail screen
+- Pull-to-refresh; salon-closed indicator
 
 **Appointment detail screen:**
 - Client name, services, time, status
-- Status action buttons: Mark In Progress / Mark Completed / Cancel (mirrors desktop status flow)
-- Link to client card (PM-2)
-- Link to checkout (PM-3) when status is `in_progress`
-
-**Navigation:** bottom tab bar — Schedule · Clients · Clock (PM-4) · Briefing (PM-5)
+- Quick actions: Client Arrived (→ in-progress), Send Estimate (PM-8), Checkout (PM-5), Cancel
+- Link to client card (PM-7)
 
 ---
 
-### PM-2 · Client card (mobile)
+### PM-2 · Create and modify bookings
 
-Provider looks up a client to review notes before or during a service.
+Provider creates a new appointment or requests a change to an existing one from their phone. Same conflict detection as desktop.
 
-- Accessible from appointment detail (tap client name) or via a search entry point on a Clients tab
-- **Read + edit:** colour formula notes, service notes, general notes — same fields as the desktop client card
+**Create appointment:**
+- From Schedule tab: "+ New" → pick client (search or recent), service(s), date/time
+- Conflict check against existing appointments
+- Creates a confirmed appointment directly (not a request — providers have authority)
+- `POST /appointments` (existing endpoint)
+
+**Modify existing appointment:**
+- From appointment detail: "Reschedule" → date/time picker; "Edit services" → add/remove items
+- Uses existing `PATCH /appointments/{id}` and item endpoints
+- Conflict check on reschedule
+
+**Out of scope for mobile v1:** multi-provider appointments, drag-and-drop rescheduling, converting requests. Those stay desktop.
+
+---
+
+### PM-3 · Provider clock in / clock out
+
+- Large **Clock In** / **Clock Out** button on the Clock tab, current status and today's elapsed time
+- Clock in: `POST /time-entries`; clock out: `POST /time-entries/{id}/check-out`
+- Admin corrections and history remain desktop-only
+
+**Depends on:** P2-24 (complete).
+
+---
+
+### PM-4 · Client arrived
+
+Provider marks a client as arrived (appointment → `in_progress`) from their phone, avoiding the need to touch the desktop app mid-service.
+
+- "Client Arrived" action on the appointment detail screen
+- Calls `PATCH /appointments/{id}` with `status: in_progress` (existing endpoint)
+- Updates the status badge on the schedule list immediately (optimistic update)
+
+---
+
+### PM-5 · Checkout + payment request
+
+Provider checks out a client and optionally sends a payment request for non-cash, non-card transactions.
+
+**Checkout flow:**
+- Single appointment only (group checkout stays desktop)
+- Service items pre-populated; prices editable
+- GST + PST computed; payment method picker (tenant-configured methods)
+- Submit → `POST /sales`; appointment transitions to `completed`
+- Out of scope for mobile v1: retail items, promotions, cashback, void/edit
+
+**Payment request (new feature):**
+- After checkout (or before, as a pre-payment request): "Send payment request" button
+- Sends the client an email listing the total and the tenant's configured payment instructions
+- No card processing — PCI-clean by design; the tenant specifies whatever methods they want (e-transfer, PayPal, Interac, etc.)
+
+**Backend additions:**
+- `TenantPaymentMethod` gets an optional `request_instructions` text field (e.g., "Send to info@salonlyol.ca, memo: your name")
+- `POST /appointments/{id}/send-payment-request` — emails the client a formatted payment request using the appointment's service items and prices; uses enabled payment methods that have `request_instructions` set. Returns 204.
+- Email template: "Hi [client], here's a summary of your visit on [date]…" → itemised list → total → "To pay: [method 1 instructions] · [method 2 instructions]"
+- Settings: payment methods form gains a "Payment request instructions" field (optional). Any method with instructions populated appears in payment request emails.
+
+---
+
+### PM-6 · One-off schedule change request
+
+Provider requests a day off, a late start, an early finish, or a vacation block. Admin reviews and applies the exception on desktop.
+
+**Provider flow:**
+- "Request time off" from the More tab → pick type: Full day off / Late start / Early finish / Vacation block
+- Select date (or date range for vacation)
+- Optional notes (e.g. "doctor's appointment", "ski trip")
+- Submit → stored as a `ScheduleChangeRequest` record, email notification sent to admin
+
+**Admin flow (desktop):**
+- New "Change requests" section on the Staff Management page → Time tab
+- Lists pending requests with provider, type, dates, notes
+- "Approve" applies the corresponding `ProviderScheduleException`(s) automatically and marks the request approved
+- "Decline" marks it declined; optionally sends a reply note to the provider
+
+**Data model (new):**
+- `schedule_change_requests`: `id`, `tenant_id`, `provider_id`, `request_type` (`day_off` | `late_start` | `early_finish` | `vacation`), `start_date`, `end_date` (nullable for single-day), `start_time` / `end_time` (for late/early), `notes`, `status` (`pending` | `approved` | `declined`), `admin_notes`, `created_at`, `reviewed_at`, `reviewed_by_user_id`
+
+**Backend endpoints:**
+- `POST /schedule-change-requests` — provider submits; triggers admin email notification
+- `GET /schedule-change-requests` — list (admin sees all, provider sees own)
+- `POST /schedule-change-requests/{id}/approve` — admin approves; auto-creates `ProviderScheduleException`(s)
+- `POST /schedule-change-requests/{id}/decline` — admin declines with optional note
+
+---
+
+### PM-7 · Client card (mobile)
+
+Provider views a client's notes and history from their phone.
+
+- Accessible from appointment detail (tap client name) or from a Clients search tab
+- **Colour formula notes:** read + edit — the primary reason a provider needs this mid-service
+- **Special instructions:** displayed prominently (allergies, preferences)
 - Visit history: past appointments with services, providers, dates (read-only)
-- Contact info: name, phone, pronouns (read-only — editing contact details stays desktop)
-- No-show / late-cancel counts
+- Contact info and no-show / late-cancel counts (read-only)
+- Editing contact details stays desktop-only
 
-**API:** same `/clients/{id}`, `/clients/{id}/history`, `/clients/{id}/colour-notes` endpoints already used by desktop.
-
----
-
-### PM-3 · Basic checkout
-
-Provider checks out their own client at the end of a service.
-
-**Scope (mobile v1):**
-- Single appointment only — no group checkout on mobile (that's a front-desk workflow)
-- Service items pre-populated from the appointment; no retail line items in v1
-- Payment: select one payment method (full amount) or split across two
-- GST + PST computed and displayed
-- Submit → `POST /sales` (same endpoint as desktop)
-- On success: appointment status updates to `completed`
-
-**Out of scope for mobile v1:** retail items at checkout, promotions/discounts, cashback flow, voiding/editing a completed sale. These stay desktop-only.
+**API:** `/clients/{id}`, `/clients/{id}/history`, `/clients/{id}/colour-notes` — all existing.
 
 ---
 
-### PM-4 · Clock in / clock out
+### PM-8 · Send appointment estimate
 
-Provider records their actual working hours from their phone.
+Provider sends the client a pre-visit summary with estimated duration and cost before or at the start of the appointment.
 
-- Large **Clock In** / **Clock Out** button on a dedicated tab, showing current status and today's elapsed time
-- Clock in: `POST /staff/time-entries` — creates an open `StaffTimeEntry` for today
-- Clock out: `PATCH /staff/time-entries/{id}` — closes the entry and sets `total_hours`
-- Displays today's entry (in or out, time logged so far)
-- Admin corrections and multi-day history remain desktop-only
+- "Send estimate" action on the appointment detail screen
+- Auto-populates from the appointment's services: each service with provider, estimated duration, and price
+- Provider can edit prices and add a note before sending
+- Sends an email to the client: "Here's an estimate for your upcoming appointment on [date]…" → itemised services → total estimate → "Prices are estimates and may vary slightly."
+- No client confirmation required — informational only
 
-**Depends on:** P2-24 (complete — `POST /time-entries` and `POST /time-entries/{id}/check-out` already exist).
-
----
-
-### PM-5 · Stylist briefing widget
-
-Surfaces the P3-5 stylist audience briefing on the home screen so providers see their day at a glance when they open the app.
-
-- Collapsible card at the top of the Schedule tab
-- Pulls the latest briefing for the logged-in provider from the briefing engine delivery endpoint
-- Content: today's client list preview with formula notes flagged, any no-show history callouts, flagged appointments (e.g. first-time clients)
-- Falls back gracefully if no briefing has been generated yet
-
-**Depends on:** P3-5 stylist briefing audience (backend briefing generation).
+**Backend:**
+- `POST /appointments/{id}/send-estimate` — generates and sends the estimate email; returns 204
+- Uses the existing `send_email` infrastructure and branded layout
+- No new schema fields — appointment items already carry service name, provider name, duration, and price
 
 ---
 
-### PM-6 · Push notifications
+### PM-9 · App Store + Play Store submission
 
-Providers receive real-time alerts on their phone without polling.
+- EAS Build for production iOS + Android builds via GitHub Actions
+- Apple App Store: App Store Connect listing, TestFlight first
+- Google Play: internal track → production rollout
+- App name: **SalonOS** for multi-tenant; **Salon Lyol** for single-tenant beta
+- Privacy policy required (push notification permission, if added later)
 
-**Notification types (v1):**
-- New booking request assigned to them (or all-staff broadcast)
-- Appointment reminder (day-of, configurable lead time — same triggers as email reminders P2-3)
-- Appointment cancelled (when a confirmed appointment they're on is cancelled)
-
-**Implementation:**
-- Expo Push Notifications + `expo-notifications`
-- On login, register the device token via a new `POST /devices/push-token` endpoint; store `(user_id, token, platform)` in a `push_tokens` table
-- Notification dispatch added to existing trigger points (new request, reminder job, cancellation)
-- On logout / uninstall: deregister token
-
-**Backend additions:** `push_tokens` table + token registration endpoint + Expo server SDK call (`exponent/push-notification-service`) in the relevant routers.
-
----
-
-### PM-7 · App Store + Play Store submission
-
-Ship the app to both stores.
-
-- **EAS Build** for production builds (iOS + Android) via GitHub Actions
-- **Apple App Store:** Expo Apple account setup, provisioning profile, App Store Connect listing — screenshots, description, age rating
-- **Google Play:** Google Play Console account, signing key via EAS, internal → production track rollout
-- App name: **SalonOS** (or **Salon Lyol** for the single-tenant v1 build — revisit for multi-tenant)
-- Privacy policy required by both stores (covers camera permission for future profile photos, push notifications)
-
-**Phasing:** submit to TestFlight / internal Play track first; external release after Salon Lyol UAT on mobile.
+**Phasing:** TestFlight / internal Play track after Salon Lyol UAT on mobile.
 
 ---
 
