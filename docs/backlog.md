@@ -281,34 +281,13 @@ Sale items already reference `appointment_item_id` — they naturally span multi
 
 **Depends on:** revisits P2-1 (the `appointment_id` FK on `Sale` and the unique constraint). Pre-UAT lifecycle means we drop the column and add the junction in a single migration with no backfill drama.
 
-### P2-12 · Retail items (catalog + checkout integration)
+### P2-12 · Retail items (catalog + checkout integration) · ✅ Complete
 
-Salons sell product (shampoo, styling product, tools) alongside services. Today the system has no concept of retail. Adds the retail catalog and lets staff add retail lines to a sale at checkout.
+`RetailItem` + `RetailCategory` catalog with full CRUD (`RetailPage.tsx`). `SaleItem.kind` discriminator (`service` | `retail`). "+ Add retail item" picker in `CheckoutPanel`. Per-item GST/PST exempt flags applied at checkout.
 
-**Data model:**
-- `RetailItem` (per tenant): `sku` (optional), `name`, `description`, `category_id` (nullable, links to a new `RetailCategory` table), `default_price`, `default_cost`, `is_gst_exempt`, `is_pst_exempt`, `is_active`. Stock fields live in P2-13, not here — keep this entity catalog-only.
-- `SaleItem` needs a kind discriminator (`service` | `retail`) and a nullable `retail_item_id` alongside the existing `appointment_item_id`. Exactly one of the two FKs is set per row. The existing `description`/`unit_price`/`discount_amount`/`line_total` columns work for both kinds.
+### P2-13 · Inventory management · ✅ Complete
 
-**UX:**
-- Top-level "Retail" nav entry — admin-managed list + edit (matches the data/config pattern: this is data, not settings).
-- CheckoutPanel: a "+ Add retail item" affordance (separate from service items) opens a picker; selecting one creates a SaleItem with kind=retail, defaults from the catalog, editable price/discount inline.
-
-**Tax handling:** retail typically has different tax treatment than services (e.g. PST applies to retail in Ontario but not to most services). The per-item `is_gst_exempt`/`is_pst_exempt` flags carry over to checkout — sale total computation uses each line's flags rather than a flat tenant rate.
-
-### P2-13 · Inventory management
-
-Stock tracking on retail items so staff know what's on hand and the till deducts on sale. Builds on P2-12.
-
-**Data model:**
-- `RetailStockMovement`: per-tenant ledger keyed by `retail_item_id`. Each row has `kind` (`receive` | `sell` | `adjust` | `return`), `quantity` (positive integer), `unit_cost` (nullable, populated on receive/adjust), `sale_item_id` (nullable, set when kind=sell or return), `note`, `created_by_user_id`, `created_at`.
-- Current stock = sum of signed quantities (receive +, sell −, adjust ±, return +). Compute on read; no denormalised "on_hand" column in v1 (avoid drift).
-
-**Hooks:**
-- Checkout completion: on a successful sale containing retail lines, write `kind=sell` movements atomically with the sale.
-- Edit/void of a retail sale (P2-7 territory): inverse movement so stock stays consistent.
-- Manual receive/adjust UI: simple form on the retail item detail page — receive a shipment (qty + unit cost), adjust to a counted number with a reason.
-
-**Out of scope for v1:** reorder points, low-stock alerts, supplier records, purchase orders. Those are v2 once the basic ledger is trusted.
+`RetailStockMovement` ledger (receive / sell / adjust / return). On-hand count computed on read. Checkout atomically writes `kind=sell` movements. Receive and adjust flows on the retail item detail page.
 
 ### P2-14 · Services management (top-level page)
 
