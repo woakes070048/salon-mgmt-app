@@ -8,13 +8,13 @@ See docs/specs/P2-1-checkout-payment.md for the rule list and acceptance tests.
 """
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -489,6 +489,116 @@ async def create_sale(
     await db.commit()
     await db.refresh(sale)
     return _serialize(sale, [str(a.id) for a in appts], sale_items, sale_payments, methods_by_id, promos_by_id)
+
+
+# ── GET /sales ───────────────────────────────────────────────────────────────
+
+class SaleListItem(BaseModel):
+    id: str
+    client_id: str
+    client_name: str
+    completed_at: datetime | None
+    total: str
+    item_descriptions: list[str]
+    payment_labels: list[str]
+
+
+@router.get("", response_model=list[SaleListItem])
+async def list_sales(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date | None = None,
+    date_to: date | None = None,
+    client_search: str | None = None,
+) -> list[SaleListItem]:
+    tid = current_user.tenant_id
+    q = (
+        select(Sale, Client)
+        .join(Client, Client.id == Sale.client_id)
+        .where(Sale.tenant_id == tid, Sale.status == SaleStatus.completed)
+    )
+    if date_from:
+        q = q.where(func.date(Sale.completed_at) >= date_from)
+    if date_to:
+        q = q.where(func.date(Sale.completed_at) <= date_to)
+    if client_search:
+        term = f"%{client_search}%"
+        q = q.where(
+            or_(Client.first_name.ilike(term), Client.last_name.ilike(term))
+        )
+    q = q.order_by(Sale.completed_at.desc()).limit(500)
+
+    rows = (await db.execute(q)).all()
+    if not rows:
+        return []
+
+    sale_ids = [r.Sale.id for r in rows]
+
+    items_rows = (await db.execute(
+        select(SaleItem.sale_id, SaleItem.description)
+        .where(SaleItem.sale_id.in_(sale_ids))
+        .order_by(SaleItem.sale_id, SaleItem.sequence)
+    )).all()
+    items_by_sale: dict[uuid.UUID, list[str]] = {}
+    for r in items_rows:
+        items_by_sale.setdefault(r.sale_id, []).append(r.description)
+
+    payment_rows = (await db.execute(
+        select(Payment.sale_id, TenantPaymentMethod.label)
+        .join(TenantPaymentMethod, TenantPaymentMethod.id == Payment.payment_method_id)
+        .where(Payment.sale_id.in_(sale_ids))
+    )).all()
+    payments_by_sale: dict[uuid.UUID, list[str]] = {}
+    for r in payment_rows:
+        payments_by_sale.setdefault(r.sale_id, []).append(r.label)
+
+    return [
+        SaleListItem(
+            id=str(r.Sale.id),
+            client_id=str(r.Sale.client_id),
+            client_name=f"{r.Client.first_name} {r.Client.last_name}".strip(),
+            completed_at=r.Sale.completed_at,
+            total=str(r.Sale.total),
+            item_descriptions=items_by_sale.get(r.Sale.id, []),
+            payment_labels=list(dict.fromkeys(payments_by_sale.get(r.Sale.id, []))),
+        )
+        for r in rows
+    ]
+
+
+# ── GET /sales/{sale_id} ─────────────────────────────────────────────────────
+
+@router.get("/{sale_id}", response_model=SaleOut)
+async def get_sale(
+    sale_id: str,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SaleOut:
+    tid = current_user.tenant_id
+    sale = (await db.execute(
+        select(Sale).where(Sale.id == uuid.UUID(sale_id), Sale.tenant_id == tid,
+                           Sale.status == SaleStatus.completed)
+    )).scalar_one_or_none()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    all_junctions = (await db.execute(
+        select(SaleAppointment).where(SaleAppointment.sale_id == sale.id)
+    )).scalars().all()
+    appt_ids = [str(j.appointment_id) for j in all_junctions]
+
+    items = (await db.execute(
+        select(SaleItem).where(SaleItem.sale_id == sale.id).order_by(SaleItem.sequence)
+    )).scalars().all()
+    payments = (await db.execute(
+        select(Payment).where(Payment.sale_id == sale.id)
+    )).scalars().all()
+    method_ids = {p.payment_method_id for p in payments}
+    methods = (await db.execute(
+        select(TenantPaymentMethod).where(TenantPaymentMethod.id.in_(method_ids))
+    )).scalars().all() if method_ids else []
+    methods_by_id = {m.id: m for m in methods}
+    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id)
 
 
 # ── GET /sales/by-appointment/{appointment_id} ────────────────────────────────

@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSaleByAppointment, editSalePayments, patchSaleItem, type SaleItem } from '@/api/sales'
+import { getSaleByAppointment, getSaleById, editSalePayments, patchSaleItem, type SaleItem } from '@/api/sales'
 import { listPaymentMethods } from '@/api/paymentMethods'
 import { Button } from '@/components/ui/button'
 
 interface Props {
-  appointmentId: string
+  appointmentId?: string
+  saleId?: string
 }
 
 function ItemEditRow({ item, onSave, saving }: {
@@ -181,11 +182,16 @@ function EditPaymentsDialog({
   )
 }
 
-export default function SaleSummary({ appointmentId }: Props) {
+export default function SaleSummary({ appointmentId, saleId }: Props) {
   const { t } = useTranslation()
+  const queryKey = saleId
+    ? ['sale', 'by-id', saleId]
+    : ['sale', 'by-appointment', appointmentId]
   const { data: sale, isLoading, error } = useQuery({
-    queryKey: ['sale', 'by-appointment', appointmentId],
-    queryFn: () => getSaleByAppointment(appointmentId),
+    queryKey,
+    queryFn: () => saleId
+      ? getSaleById(saleId)
+      : getSaleByAppointment(appointmentId!),
     retry: false,
   })
   const [editing, setEditing] = useState(false)
@@ -196,7 +202,7 @@ export default function SaleSummary({ appointmentId }: Props) {
     mutationFn: ({ itemId, body }: { itemId: string; body: { discount_amount?: string; is_business_reimbursed?: boolean } }) =>
       patchSaleItem(sale?.id ?? '', itemId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale', 'by-appointment', appointmentId] })
+      qc.invalidateQueries({ queryKey })
       setEditingItem(null)
     },
   })

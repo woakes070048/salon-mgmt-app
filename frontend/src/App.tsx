@@ -43,6 +43,7 @@ import ClientCleanupPage from '@/pages/ClientCleanupPage'
 import ServicesPage from '@/pages/ServicesPage'
 import UsersPage from '@/pages/UsersPage'
 import TillPage from '@/pages/TillPage'
+import SalesPage from '@/pages/SalesPage'
 import RetailPage from '@/pages/RetailPage'
 import ReportsPage from '@/pages/ReportsPage'
 import TransactionReportPage from '@/pages/TransactionReportPage'
@@ -105,6 +106,7 @@ export default function App() {
         <Route path="/payroll" element={<Navigate to="/reports/payroll" replace />} />
         <Route path="/retail" element={<RetailPage />} />
         <Route path="/till" element={<TillPage />} />
+        <Route path="/sales" element={<SalesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/import" element={<DataImportPage />} />
