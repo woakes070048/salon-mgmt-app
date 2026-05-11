@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -106,12 +106,22 @@ async def monthly_report(
     sale_count, subtotal, discount_total, gst, pst, total = totals_row
 
     # ── Service vs retail split (net line_total + gross + discount per stream) ─
+    # Milano retail returns have both unit_price and quantity negative, making
+    # line_total positive. Correct by negating when quantity < 0.
+    _signed_lt = case(
+        (SaleItem.quantity < 0, -func.abs(SaleItem.line_total)),
+        else_=SaleItem.line_total,
+    )
+    _signed_gross = case(
+        (SaleItem.quantity < 0, -func.abs(SaleItem.unit_price * SaleItem.quantity)),
+        else_=SaleItem.unit_price * SaleItem.quantity,
+    )
     kind_rows = (
         await db.execute(
             select(
                 SaleItem.kind,
-                func.coalesce(func.sum(SaleItem.line_total), 0),
-                func.coalesce(func.sum(SaleItem.unit_price * SaleItem.quantity), 0),
+                func.coalesce(func.sum(_signed_lt), 0),
+                func.coalesce(func.sum(_signed_gross), 0),
                 func.coalesce(func.sum(SaleItem.discount_amount * SaleItem.quantity), 0),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
@@ -146,20 +156,22 @@ async def monthly_report(
         ).scalar() or 0
     ))
 
-    # ── Retail returns (negative retail line_totals — returned product) ──────────
-    retail_returns = Decimal(str(abs(
+    # ── Retail returns (items with negative quantity — returned product) ──────────
+    # Milano encodes returns with both unit_price and quantity negative, so
+    # line_total ends up positive. Filter on quantity < 0 and sum abs(line_total).
+    retail_returns = Decimal(str(
         (
             await db.execute(
-                select(func.coalesce(func.sum(SaleItem.line_total), 0))
+                select(func.coalesce(func.sum(func.abs(SaleItem.line_total)), 0))
                 .join(Sale, Sale.id == SaleItem.sale_id)
                 .where(
                     *completed,
                     SaleItem.kind == SaleItemKind.retail,
-                    SaleItem.line_total < 0,
+                    SaleItem.quantity < 0,
                 )
             )
         ).scalar() or 0
-    )))
+    ))
 
     # ── Gift card sales (retail items whose description mentions gift/g.c.) ────
     gift_card_total = Decimal(str(
@@ -663,14 +675,14 @@ async def payroll_detail_report(
         select(
             Sale.completed_at,
             Client.first_name, Client.last_name,
-            SaleItem.description, SaleItem.line_total,
+            SaleItem.description, SaleItem.line_total, SaleItem.quantity,
         )
         .join(Sale, Sale.id == SaleItem.sale_id)
         .join(Client, Client.id == Sale.client_id)
         .where(
             SaleItem.tenant_id == tid,
             SaleItem.kind == SaleItemKind.retail,
-            SaleItem.provider_id == pid,  # only items directly attributed to this provider
+            SaleItem.provider_id == pid,
             cast(Sale.completed_at, SADate) >= period_start,
             cast(Sale.completed_at, SADate) <= period_end,
         )
@@ -680,12 +692,14 @@ async def payroll_detail_report(
     retail_gross = D("0")
     retail_rows: list[PayrollRetailRow] = []
     for r in retail_txn_rows:
-        retail_gross += D(str(r.line_total))
+        # Returns have quantity < 0 but positive line_total (Milano encoding).
+        signed = D(str(r.line_total)) if r.quantity >= 0 else -abs(D(str(r.line_total)))
+        retail_gross += signed
         retail_rows.append(PayrollRetailRow(
             date=r.completed_at.strftime("%Y-%m-%d"),
             client_name=f"{r.first_name} {r.last_name}".strip(),
             description=r.description,
-            amount=_d(r.line_total),
+            amount=_d(signed),
         ))
 
     retail_pct = D(str(p.retail_commission_pct or 0))
