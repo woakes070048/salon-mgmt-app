@@ -531,22 +531,15 @@ function DetailsForm({
           />
         </div>
         <div>
-          <Label>Product fee</Label>
-          <div className="flex gap-2 mt-1">
-            <input
-              type="text" inputMode="decimal"
-              value={form.default_cost}
-              onChange={e => set('default_cost', e.target.value)}
-              className="flex-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
-              placeholder={form.is_cost_percent ? 'e.g. 10 for 10%' : '0.00'}
-            />
+          <div className="flex items-center justify-between">
+            <Label>Product fee</Label>
             <div className="flex rounded-md border border-input overflow-hidden text-xs">
               {(['$', '%'] as const).map(mode => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => set('is_cost_percent', mode === '%')}
-                  className={`px-2.5 py-1.5 font-medium transition-colors ${
+                  className={`px-2.5 py-1 font-medium transition-colors ${
                     (mode === '%') === form.is_cost_percent
                       ? 'bg-foreground text-background'
                       : 'bg-muted text-muted-foreground hover:bg-muted/70'
@@ -555,8 +548,15 @@ function DetailsForm({
               ))}
             </div>
           </div>
+          <input
+            type="text" inputMode="decimal"
+            value={form.default_cost}
+            onChange={e => set('default_cost', e.target.value)}
+            className="w-full mt-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
+            placeholder={form.is_cost_percent ? 'e.g. 10 for 10%' : '0.00'}
+          />
           <p className="text-xs text-muted-foreground mt-1">
-            {form.is_cost_percent ? 'Percentage of gross charged to provider' : 'Flat amount per service application'}
+            {form.is_cost_percent ? '% of service price charged to provider' : 'Flat amount per application'}
           </p>
         </div>
         <div>
