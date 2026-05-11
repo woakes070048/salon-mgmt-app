@@ -642,6 +642,96 @@ Retake the appointment book screenshots to show the new sub-slot gridlines, gutt
 
 ---
 
+### DOC-1 · Quick-reference cards (go-live prerequisite)
+
+Printable one-page PDF guides per role covering the day-one workflows. Designed for physical environments — laminated and kept at the front desk or in the staff room. Written in plain language, no jargon.
+
+**Card A — Stylist daily workflow**
+- Clock in and clock out
+- View today's schedule
+- Mark a client as arrived (tap the appointment → "Mark arrived")
+- Viewing a client card: colour notes, service history, special instructions
+- What to do if you need to add a service mid-appointment
+
+**Card B — Front desk / checkout**
+- Processing a checkout: select payment method, enter amount, handle cashback/change
+- Split payment across two methods
+- Applying a discount or promotion
+- Editing a payment after checkout (wrong card type, bad split)
+- Sending a receipt by email
+
+**Card C — Admin daily**
+- Converting a booking request to a confirmed appointment
+- Running end-of-day cash till reconciliation
+- Adding a petty cash entry
+- Running the monthly sales report
+- Running payroll for the period
+
+**Format:** Each card is a single A4 / Letter page. Minimal prose, step-numbered, with UI element names in **bold** matching the app exactly. Produced as a PDF in `docs/user-guides/`. No dev work required — pure documentation.
+
+**Owner:** Freddy writes first draft; Claude Code formats and edits.
+
+---
+
+### DOC-2 · External docs site
+
+A hosted documentation site covering the full app for staff onboarding and ongoing reference. Linked from the app's help menu (once DOC-3 ships) and from the README.
+
+**Recommended platform:** Notion (zero infrastructure, easy to update without code deploys, shareable link). Alternative: GitBook or a static site in `docs/site/` if ownership and version control matter more than edit speed.
+
+**Structure:**
+
+| Section | Topics |
+|---|---|
+| Getting started | Logging in, the app shell, your role |
+| Appointment book | Grid navigation, status flow, adding/removing services, drag-and-drop |
+| Booking requests | Guest requests, reviewing, converting, confirmation emails |
+| Clients | Profile, colour notes, history, merging duplicates |
+| Checkout & payments | Checkout flow, split payment, cashback, promotions, editing a sale |
+| Retail | Catalog, stock movements, checkout integration |
+| Reports | Sales report, transaction report, cash till, payroll detail |
+| Payroll | Running payroll, time entries, commission tiers, sending to Paytrak |
+| Staff management | Provider profiles, schedules, compensation settings |
+| Settings | Branding, operating hours, payment methods, email, import |
+
+**Writing approach:** Each page is task-oriented ("How to process a group checkout") not reference-oriented ("The Checkout Panel"). Screenshots from the live app. Updated by Freddy or Claude Code when features change.
+
+**Phase 1 of docs site:** Appointment book + Checkout + Clients (the three daily-use surfaces). Remaining sections added progressively.
+
+**Depends on:** DOC-1 (cards establish the vocabulary and task list for the site).
+
+---
+
+### DOC-3 · In-app contextual help
+
+Contextual help surfaced inside the app itself, so staff don't have to leave the flow to look something up.
+
+**Phase 1 — Tooltip layer**
+
+Add `?` icon buttons to concepts that are non-obvious or frequently misunderstood:
+- **Cashback** — "Cash returned to the client from the till. The amount you charge the client goes toward the bill; cashback is the change. Tip out separately — it doesn't touch the salon's books."
+- **Business Reimbursed** — "The salon is absorbing this discount. Your commission and product fee are calculated on the full pre-discount price, not what the client paid."
+- **Commission tier** — "Your commission rate steps up once net service revenue passes the threshold for the period."
+- **Product fee** — "The cost of colour product deducted from your gross before commission is applied."
+- **Processing offset / duration** — "The gap between applying colour and rinsing. The appointment book keeps this block free so you can take another client."
+
+Implementation: a `<HelpTip>` component wrapping shadcn `Tooltip` with a `?` icon. No backend required. Drop it alongside existing labels where confusion is most likely.
+
+**Phase 2 — Help page (`/help`)**
+
+A lightweight page in the app that:
+- Links to the external docs site (DOC-2) for full guides
+- Lists the printable quick-reference cards (DOC-1) as downloadable PDFs
+- Surfaces the 5–10 most common "how do I…" questions as inline accordions
+
+**Phase 3 — Contextual help panel (future)**
+
+A slide-over panel triggered from any page that surfaces the relevant docs section for the current route. Requires DOC-2 to have a documented API or embed-friendly URLs. Low priority until multi-tenant onboarding volume justifies the investment.
+
+**Phasing:** DOC-1 → DOC-2 (Phase 1) → DOC-3 Phase 1 (tooltips) → DOC-3 Phase 2 (help page) → DOC-3 Phase 3 (panel, if ever).
+
+---
+
 ## Phase 3 — AI / Briefing Engine
 
 ### P3-1 · Briefing Engine — core infrastructure · ✅ Bootstrapped (partial)
