@@ -1,4 +1,4 @@
-import uuid
+import uuid  # noqa
 from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal
