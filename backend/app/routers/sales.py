@@ -53,6 +53,7 @@ class SaleItemIn(BaseModel):
     unit_price: Decimal
     discount_amount: Decimal = Decimal("0")
     promotion_id: str | None = None
+    is_business_reimbursed: bool = False  # discount absorbed by salon; provider commissioned on full amount
     # Tax flags (passed from frontend; validated against retail item on backend for retail lines)
     is_gst_exempt: bool = False
     is_pst_exempt: bool = False
@@ -81,6 +82,7 @@ class SaleItemOut(BaseModel):
     unit_price: str
     discount_amount: str
     line_total: str
+    is_business_reimbursed: bool
     promotion_id: str | None
     promotion_label: str | None
 
@@ -148,6 +150,7 @@ def _serialize(
                 unit_price=str(it.unit_price),
                 discount_amount=str(it.discount_amount),
                 line_total=str(it.line_total),
+                is_business_reimbursed=it.is_business_reimbursed,
                 promotion_id=str(it.promotion_id) if it.promotion_id else None,
                 promotion_label=pb[it.promotion_id].label if it.promotion_id and it.promotion_id in pb else None,
             )
@@ -415,6 +418,7 @@ async def create_sale(
                 unit_price=_money(in_item.unit_price),
                 discount_amount=_money(in_item.discount_amount),
                 line_total=line_total,
+                is_business_reimbursed=in_item.is_business_reimbursed,
             )
         else:
             ri = retail_item_map.get(in_item.retail_item_id or "")
@@ -435,6 +439,7 @@ async def create_sale(
                 unit_price=_money(in_item.unit_price),
                 discount_amount=_money(in_item.discount_amount),
                 line_total=line_total,
+                is_business_reimbursed=in_item.is_business_reimbursed,
             )
         db.add(si)
         sale_items.append(si)
@@ -739,3 +744,70 @@ async def edit_sale_payments(
     ).scalars().all()
 
     return _serialize(sale, appt_ids, list(items), list(refreshed_payments), methods_by_id)
+
+
+# ── PATCH /sales/{sale_id}/items/{item_id} ────────────────────────────────────
+
+class SaleItemPatch(BaseModel):
+    discount_amount: Decimal | None = None
+    is_business_reimbursed: bool | None = None
+
+
+@router.patch("/{sale_id}/items/{item_id}", response_model=SaleOut)
+async def patch_sale_item(
+    sale_id: str,
+    item_id: str,
+    body: SaleItemPatch,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SaleOut:
+    """Edit discount and/or business-reimbursed flag on a completed sale item."""
+    tid = current_user.tenant_id
+
+    sale = (await db.execute(
+        select(Sale).where(Sale.id == uuid.UUID(sale_id), Sale.tenant_id == tid,
+                           Sale.status == SaleStatus.completed)
+    )).scalar_one_or_none()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    item = (await db.execute(
+        select(SaleItem).where(SaleItem.id == uuid.UUID(item_id), SaleItem.sale_id == sale.id)
+    )).scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Sale item not found")
+
+    old_line_total = item.line_total
+
+    if body.discount_amount is not None:
+        item.discount_amount = _money(body.discount_amount)
+        # Recalculate line total: (unit_price - discount) × quantity
+        item.line_total = _money(
+            max(Decimal("0"), item.unit_price - item.discount_amount) * item.quantity
+        )
+
+    if body.is_business_reimbursed is not None:
+        item.is_business_reimbursed = body.is_business_reimbursed
+
+    # Adjust sale subtotal and total for the line_total change
+    delta = item.line_total - old_line_total
+    if delta != 0:
+        sale.subtotal = _money(sale.subtotal + delta)
+        sale.total = _money(sale.total + delta)
+
+    sale.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(sale)
+
+    items = (await db.execute(select(SaleItem).where(SaleItem.sale_id == sale.id))).scalars().all()
+    payments = (await db.execute(select(Payment).where(Payment.sale_id == sale.id))).scalars().all()
+    method_ids = {p.payment_method_id for p in payments}
+    methods = (await db.execute(
+        select(TenantPaymentMethod).where(TenantPaymentMethod.id.in_(method_ids))
+    )).scalars().all()
+    methods_by_id = {m.id: m for m in methods}
+    appt_ids = [str(r.appointment_id) for r in (await db.execute(
+        select(SaleAppointment).where(SaleAppointment.sale_id == sale.id)
+    )).scalars().all()]
+
+    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id)

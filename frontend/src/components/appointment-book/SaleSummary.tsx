@@ -1,12 +1,46 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSaleByAppointment, editSalePayments } from '@/api/sales'
+import { getSaleByAppointment, editSalePayments, patchSaleItem, type SaleItem } from '@/api/sales'
 import { listPaymentMethods } from '@/api/paymentMethods'
 import { Button } from '@/components/ui/button'
 
 interface Props {
   appointmentId: string
+}
+
+function ItemEditRow({ item, onSave, saving }: {
+  item: SaleItem
+  onSave: (body: { discount_amount?: string; is_business_reimbursed?: boolean }) => void
+  saving: boolean
+}) {
+  const discountRef = useRef<HTMLInputElement>(null)
+  const [br, setBr] = useState(item.is_business_reimbursed)
+  return (
+    <div className="mt-1 pl-2 border-l-2 border-muted space-y-1.5 pb-1">
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground w-16 shrink-0">Discount $</span>
+        <input ref={discountRef} type="number" step="0.01" min="0"
+          defaultValue={parseFloat(item.discount_amount).toFixed(2)}
+          className="border rounded px-1.5 py-0.5 text-xs w-20 bg-white" />
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={br} onChange={e => setBr(e.target.checked)}
+          className="h-3 w-3 rounded accent-foreground" />
+        <span className="text-muted-foreground">Business reimbursed</span>
+      </label>
+      <button
+        disabled={saving}
+        onClick={() => onSave({
+          discount_amount: parseFloat(discountRef.current?.value || '0').toFixed(2),
+          is_business_reimbursed: br,
+        })}
+        className="text-[10px] bg-foreground text-background px-2 py-0.5 rounded hover:opacity-90 disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  )
 }
 
 function fmt(s: string): string {
@@ -155,6 +189,17 @@ export default function SaleSummary({ appointmentId }: Props) {
     retry: false,
   })
   const [editing, setEditing] = useState(false)
+  const [editingItem, setEditingItem] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const patchItemMutation = useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: { discount_amount?: string; is_business_reimbursed?: boolean } }) =>
+      patchSaleItem(sale?.id ?? '', itemId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sale-by-appointment', appointmentId] })
+      setEditingItem(null)
+    },
+  })
 
   if (isLoading) {
     return <p className="text-xs text-muted-foreground text-center pt-2">{t('common.loading')}</p>
@@ -167,6 +212,39 @@ export default function SaleSummary({ appointmentId }: Props) {
 
   return (
     <div className="rounded-md border bg-muted/30 px-3 py-2 mt-2 space-y-1 text-xs">
+      {/* Line items — editable if sale is today */}
+      {sale.items.length > 0 && (
+        <div className="space-y-1 pb-1.5 border-b">
+          {sale.items.map((item: SaleItem) => {
+            const hasDiscount = parseFloat(item.discount_amount) > 0
+            const isEditing = editingItem === item.id
+            return (
+              <div key={item.id}>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-muted-foreground truncate max-w-[160px]">{item.description}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.is_business_reimbursed && (
+                      <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">BR</span>
+                    )}
+                    {hasDiscount && <span className="text-muted-foreground">−${fmt(item.discount_amount)}</span>}
+                    <span>${fmt(item.line_total)}</span>
+                    {sale.is_editable && (
+                      <button onClick={() => setEditingItem(isEditing ? null : item.id)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
+                        {isEditing ? 'cancel' : 'edit'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {isEditing && (
+                  <ItemEditRow item={item} onSave={(body) => patchItemMutation.mutate({ itemId: item.id, body })}
+                    saving={patchItemMutation.isPending} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
       <div className="flex justify-between">
         <span className="text-muted-foreground">{t('checkout.sale_subtotal')}</span>
         <span>${fmt(sale.subtotal)}</span>

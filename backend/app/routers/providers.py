@@ -274,6 +274,9 @@ async def _calc_payroll_line(
         await db.execute(
             select(
                 SaleItem.line_total,
+                SaleItem.unit_price,
+                SaleItem.quantity,
+                SaleItem.is_business_reimbursed,
                 ServiceCategory.name.label("cat_name"),
                 Service.id.label("service_id"),
                 Service.default_cost.label("default_cost"),
@@ -304,21 +307,22 @@ async def _calc_payroll_line(
     for row in service_rows:
         cat = (row.cat_name or "").lower()
         is_colour = "colour" in cat or "color" in cat or "colouring" in cat
-        sid = str(row.service_id)
-        effective_price = D(str(psp_price_map.get(sid, float(row.default_price or 0))))
         default_cost = D(str(float(row.default_cost or 0)))
+        full_amount = D(str(row.unit_price)) * D(str(row.quantity))
+
+        # Commission basis: full amount if business-reimbursed, else what client paid
+        commission_basis = full_amount if row.is_business_reimbursed else D(str(row.line_total))
 
         if is_colour:
-            colour_revenue += row.line_total
+            colour_revenue += commission_basis
             colour_count += 1
-            # default_cost is a % of the actual charged amount (not standard price)
-            # so a discounted application correctly yields a smaller product fee
-            colour_fee += D(str(row.line_total)) * default_cost / D("100")
+            # Product fee always on full pre-discount amount — products were used regardless
+            colour_fee += full_amount * default_cost / D("100")
         else:
-            styling_revenue += row.line_total
+            styling_revenue += commission_basis
             styling_count += 1
-            # default_cost is a flat dollar amount per service item
-            styling_fee += default_cost
+            # Styling flat fee per service application
+            styling_fee += default_cost * D(str(row.quantity))
 
     gross_service_revenue = styling_revenue + colour_revenue
 

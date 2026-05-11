@@ -30,6 +30,7 @@ interface ItemDraft {
   discount: string        // always dollar amount used for calculations
   discountMode: '$' | '%'
   discountInput: string   // raw user input ($ or % depending on mode)
+  isBusinessReimbursed: boolean
   promotionId: string | null
   isGstExempt: boolean
   isPstExempt: boolean
@@ -89,6 +90,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       description: it.service.name,
       providerName: it.provider.display_name,
       commissionProviderId: null,
+      isBusinessReimbursed: false,
       quantity: 1,
       unitPrice: it.price.toFixed(2),
       discount: '0.00',
@@ -127,6 +129,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
         description: it.service.name,
         providerName: it.provider.display_name,
       commissionProviderId: null,
+      isBusinessReimbursed: false,
         quantity: 1,
         unitPrice: it.price.toFixed(2),
         discount: '0.00',
@@ -201,6 +204,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
       description: ri.name,
       providerName: '',
       commissionProviderId: null,
+      isBusinessReimbursed: false,
       quantity: 1,
       unitPrice: parseFloat(ri.default_price).toFixed(2),
       discount: '0.00',
@@ -270,6 +274,7 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
         quantity: i.quantity,
         unit_price: fmt(toMoney(i.unitPrice)),
         discount_amount: fmt(toMoney(i.discount)),
+        is_business_reimbursed: i.isBusinessReimbursed,
         promotion_id: i.promotionId ?? null,
         is_gst_exempt: i.isGstExempt,
         is_pst_exempt: i.isPstExempt,
@@ -510,6 +515,20 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
                     <div className="px-2 py-1.5 text-sm mt-0.5 font-medium">${fmt(lineTotal)}</div>
                   </div>
                 </div>
+                {/* Business Reimbursed toggle — only shown when there is a discount */}
+                {toMoney(it.discount) > 0 && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                    <input
+                      type="checkbox"
+                      checked={it.isBusinessReimbursed}
+                      onChange={e => updateItem(idx, { isBusinessReimbursed: e.target.checked })}
+                      className="h-3.5 w-3.5 rounded border-input accent-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Business reimbursed — provider commissioned &amp; product fee on full amount
+                    </span>
+                  </label>
+                )}
               </div>
             )
           })}

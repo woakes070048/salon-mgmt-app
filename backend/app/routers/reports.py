@@ -576,7 +576,9 @@ async def payroll_detail_report(
             Sale.completed_at,
             Client.first_name, Client.last_name,
             SaleItem.line_total,
+            SaleItem.unit_price,
             SaleItem.quantity,
+            SaleItem.is_business_reimbursed,
             Service.name.label("service_name"),
             Service.id.label("service_id"),
             Service.default_cost,
@@ -606,20 +608,22 @@ async def payroll_detail_report(
     for r in svc_txn_rows:
         cat = (r.cat_name or "").lower()
         is_col = "colour" in cat or "color" in cat or "colouring" in cat
-        sid = str(r.service_id)
-        eff_price = D(str(psp_price_map.get(sid, float(r.default_price or 0))))
         default_cost = D(str(float(r.default_cost or 0)))
-        gross = D(str(r.line_total))
         qty = D(str(int(r.quantity or 1)))
+        full_amount = D(str(r.unit_price)) * qty        # pre-discount
+        line_total = D(str(r.line_total))               # what client paid
+        is_br = bool(r.is_business_reimbursed)
 
+        # Commission basis: full amount if business-reimbursed, else client paid
+        commission_basis = full_amount if is_br else line_total
+
+        # Product fee always on full pre-discount amount
         if is_col:
-            # Fee = actual_charged × cost% (gross already includes qty effect)
-            # Using actual charge so discounted applications yield smaller fees
-            fee = gross * default_cost / D("100")
-            colour_gross += gross; colour_fees += fee
+            fee = full_amount * default_cost / D("100")
+            colour_gross += commission_basis; colour_fees += fee
         else:
-            fee = default_cost * qty  # flat per service application × qty
-            styling_gross += gross; styling_fees += fee
+            fee = default_cost * qty
+            styling_gross += commission_basis; styling_fees += fee
 
         service_rows.append(PayrollServiceRow(
             date=r.completed_at.strftime("%Y-%m-%d"),
@@ -627,9 +631,9 @@ async def payroll_detail_report(
             service_name=r.service_name,
             category=r.cat_name,
             is_colour=is_col,
-            gross_amount=_d(gross),
+            gross_amount=_d(commission_basis),
             product_fee=_d(fee),
-            net_amount=_d(gross - fee),
+            net_amount=_d(commission_basis - fee),
         ))
 
     net_service_revenue = styling_gross + colour_gross - styling_fees - colour_fees

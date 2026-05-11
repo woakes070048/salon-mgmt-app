@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
@@ -71,6 +71,7 @@ class SaleItem(TenantScopedBase):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
     line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    is_business_reimbursed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class Payment(TenantScopedBase):

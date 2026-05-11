@@ -2,12 +2,15 @@ import { api } from './client'
 
 export interface SaleItem {
   id: string
+  kind: string
   description: string
   provider_id: string
   sequence: number
+  quantity: number
   unit_price: string
   discount_amount: string
   line_total: string
+  is_business_reimbursed: boolean
 }
 
 export interface SalePayment {
@@ -44,8 +47,17 @@ export interface SaleItemIn {
   unit_price: string
   discount_amount: string
   promotion_id?: string | null
+  is_business_reimbursed?: boolean
   is_gst_exempt?: boolean
   is_pst_exempt?: boolean
+}
+
+export function patchSaleItem(
+  saleId: string,
+  itemId: string,
+  body: { discount_amount?: string; is_business_reimbursed?: boolean }
+): Promise<Sale> {
+  return api.patch<Sale>(`/sales/${saleId}/items/${itemId}`, body)
 }
 
 export interface SalePaymentIn {
