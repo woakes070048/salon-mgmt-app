@@ -1,0 +1,93 @@
+name: Nightly Database Backup
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # 1am Toronto (EDT/UTC-4) — after Cloud SQL auto-backup at 3am UTC
+  workflow_dispatch:        # allow manual trigger any time
+
+jobs:
+  backup:
+    name: pg_dump to GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # create/delete GitHub releases
+      id-token: write    # Workload Identity Federation
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get install -y -q postgresql-client
+
+      - name: Download Cloud SQL proxy
+        run: |
+          wget -q https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.2/cloud-sql-proxy.linux.amd64 -O cloud-sql-proxy
+          chmod +x cloud-sql-proxy
+
+      - name: Get DB password from Secret Manager
+        id: dbpass
+        run: |
+          PASS=$(gcloud secrets versions access latest --secret=salon-db-password --project=$GCP_PROJECT_ID)
+          echo "::add-mask::$PASS"
+          echo "v=$PASS" >> $GITHUB_OUTPUT
+
+      - name: Start Cloud SQL proxy
+        run: |
+          ./cloud-sql-proxy "$GCP_PROJECT_ID:$GCP_REGION:salon-lyol-pg" --port 5432 &
+          sleep 6
+
+      - name: Run pg_dump
+        env:
+          PGPASSWORD: ${{ steps.dbpass.outputs.v }}
+        run: |
+          STAMP=$(date -u +%Y-%m-%d)
+          DUMP="salon_lyol_${STAMP}.dump"
+          pg_dump -h 127.0.0.1 -p 5432 -U salon salon_lyol \
+            --no-password --format=custom --compress=9 -f "$DUMP"
+          SIZE=$(du -sh "$DUMP" | cut -f1)
+          echo "Dump size: $SIZE"
+          echo "DUMP=$DUMP" >> $GITHUB_ENV
+          echo "STAMP=$STAMP" >> $GITHUB_ENV
+
+      - name: Upload as GitHub release
+        run: |
+          gh release create "backup-${STAMP}" \
+            --title "DB backup ${STAMP}" \
+            --notes "$(cat <<'EOF'
+          Automated nightly backup — salon_lyol database.
+
+          **To restore:**
+          ```
+          pg_restore -h localhost -U salon -d salon_lyol --clean ${{ env.DUMP }}
+          ```
+          EOF
+          )" \
+            --prerelease \
+            "$DUMP"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rotate old backups (keep last 30)
+        run: |
+          gh release list --limit 200 --json tagName \
+            | python3 -c "
+          import json, sys, subprocess
+          tags = [r['tagName'] for r in json.load(sys.stdin) if r['tagName'].startswith('backup-')]
+          tags.sort(reverse=True)
+          for tag in tags[30:]:
+              subprocess.run(['gh','release','delete', tag,'--yes','--cleanup-tag'], check=False)
+              print(f'Deleted {tag}')
+          " || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
