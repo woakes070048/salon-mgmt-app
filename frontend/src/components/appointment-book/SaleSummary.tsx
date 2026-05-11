@@ -196,7 +196,7 @@ export default function SaleSummary({ appointmentId }: Props) {
     mutationFn: ({ itemId, body }: { itemId: string; body: { discount_amount?: string; is_business_reimbursed?: boolean } }) =>
       patchSaleItem(sale?.id ?? '', itemId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale-by-appointment', appointmentId] })
+      qc.invalidateQueries({ queryKey: ['sale', 'by-appointment', appointmentId] })
       setEditingItem(null)
     },
   })
@@ -228,12 +228,10 @@ export default function SaleSummary({ appointmentId }: Props) {
                     )}
                     {hasDiscount && <span className="text-muted-foreground">−${fmt(item.discount_amount)}</span>}
                     <span>${fmt(item.line_total)}</span>
-                    {sale.is_editable && (
-                      <button onClick={() => setEditingItem(isEditing ? null : item.id)}
-                        className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
-                        {isEditing ? 'cancel' : 'edit'}
-                      </button>
-                    )}
+                    <button onClick={() => setEditingItem(isEditing ? null : item.id)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
+                      {isEditing ? 'cancel' : 'edit'}
+                    </button>
                   </div>
                 </div>
                 {isEditing && (
@@ -284,7 +282,7 @@ export default function SaleSummary({ appointmentId }: Props) {
               </div>
             )
           })}
-          {sale.is_editable && !editing && (
+          {!editing && (
             <button
               onClick={() => setEditing(true)}
               className="text-[10px] text-muted-foreground hover:text-foreground underline pt-0.5"

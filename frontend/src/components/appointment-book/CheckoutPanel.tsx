@@ -515,8 +515,8 @@ export default function CheckoutPanel({ appointment, date, onClose, onCompleted 
                     <div className="px-2 py-1.5 text-sm mt-0.5 font-medium">${fmt(lineTotal)}</div>
                   </div>
                 </div>
-                {/* Business Reimbursed toggle — only shown when there is a discount */}
-                {toMoney(it.discount) > 0 && (
+                {/* Business Reimbursed toggle — shown when there is a discount or a negative price (reversal) */}
+                {(toMoney(it.discount) > 0 || toMoney(it.unitPrice) < 0) && (
                   <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
                     <input
                       type="checkbox"
