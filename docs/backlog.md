@@ -182,12 +182,33 @@ Follow-up to P2-1 (deferred Q3 from `docs/specs/P2-1-checkout-payment.md`). When
 
 Staff sometimes record the wrong payment method or a bad split (e.g., charged $50 to Visa when it was actually Mastercard). They need to correct the receipt without voiding and re-creating the sale.
 
-- Scope of editable fields in v1: payment lines only — `payment_method`, `amount`, add/remove split lines. Total, items, prices, taxes are **not** editable here (those are voids/refunds, separate concern).
-- Server-side rule: edited payments must still sum to the existing sale total (no change to totals).
-- Audit trail: every edit writes a `SalePaymentEdit` record (who, when, before → after JSON snapshot). Original is preserved for reporting integrity.
-- Constraint: editable while the sale is on the same business day; older sales become read-only and require a void+redo (see future void/refund work). Tenant-configurable cutoff acceptable in v2.
-- Backend: `PATCH /sales/{id}/payments` — accepts the new payment list, validates total, writes edit log, replaces payment rows in a transaction.
-- Frontend: "Edit payments" action on the sale summary (P2-6); reuses payment selector from CheckoutPanel.
+- Scope of editable fields: payment lines (`payment_method`, `amount`, add/remove split lines) and per-item discount and Business Reimbursed flag
+- Server-side rule: edited payments must still sum to the existing sale total (no change to totals)
+- Audit trail: every payment edit writes a `SalePaymentEdit` record (who, when, before → after JSON snapshot)
+- **No same-day restriction for admins** — any completed sale is editable; the original same-day constraint was relaxed during parallel-run reconciliation to support historical corrections
+- Backend: `PATCH /sales/{id}/payments` and `PATCH /sales/{id}/items/{item_id}`
+- Frontend: "edit" link on each line item and "edit payments" link in the sale summary; accessible on all completed sales
+
+### P2-7a · Business Reimbursed flag on sale items · ✅ Complete
+
+When a salon absorbs a discount (e.g., a complimentary service for a dissatisfied client), the provider should still be commissioned on the full pre-discount amount — the salon, not the provider, is eating the cost. Without this flag, the provider's commission was silently reduced by any discount.
+
+- `is_business_reimbursed` boolean on `SaleItem` (migration `i9j0k1l2m3n4`)
+- Checkbox appears at checkout when a line item has a discount > 0 or a negative unit price (reversal)
+- When set: provider commission basis = `unit_price × qty` (full amount); product fee always on full amount (unchanged)
+- When not set: commission basis = `line_total` (what the client paid); product fee still on full amount
+- Editable post-checkout via the sale summary edit UI or the Sales admin page
+- Payroll report and payroll detail both respect the flag
+
+### P2-7b · Sales admin page · ✅ Complete
+
+Admins need a place to search and edit historical sales without navigating the appointment book calendar month by month — especially during parallel-run reconciliation.
+
+- Finance → Sales in the nav (replaces the dead placeholder)
+- Date range + client name search; up to 500 results, newest-first
+- Each row: date, client, service summary, payment methods, total; expandable to full SaleSummary with edit controls
+- Backend: `GET /sales` (list with filters) and `GET /sales/{id}` (single sale by ID)
+- Finance → "Daily Report" retains the existing summary report at `/reports/sales`
 
 ### P2-8 · End-of-day cash reconciliation · ✅ Complete
 

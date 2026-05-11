@@ -132,8 +132,10 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Ontario GST (5%) + PST (8%) tracked per sale, with per-item tax flags for retail
 - Cashback flow: tips are returned to the client as change and never touch salon revenue — correct for how the salon actually operates, and required for honest cash reconciliation
 - Tenant-defined promotions — percent or fixed-amount discounts applied per line at checkout
-- Sale summary on completed appointments with full payment breakdown
-- Edit completed sale payments (same-day correction with full audit log)
+- **Business Reimbursed flag** — marks a discounted service line as salon-absorbed; provider is commissioned and charged product fee on the full pre-discount amount rather than the client-paid amount
+- Sale summary on completed appointments with full payment breakdown and inline edit
+- Edit sale items (discount, business reimbursed flag) and payments on any completed sale — no same-day restriction for admins
+- **Sales admin page** (Finance → Sales) — searchable by date range and client name; click any row to expand the full sale detail and edit inline without navigating the appointment calendar
 
 ### Retail & Inventory
 - Retail product catalog (SKU, price, cost, tax flags) with full CRUD
@@ -145,6 +147,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 ### Sales Reporting & Cash Reconciliation
 - Monthly sales report covering revenue, discounts, taxes, and payment-type breakdown by provider
 - End-of-day cash till: open/close periods, petty cash entries, expected vs. counted variance, 30-day history
+- **Nightly database backup** — automated `pg_dump` via GitHub Actions to GitHub Releases at 1 am Toronto time; 30-day rolling retention
 
 ### Client CRM
 - Full client profile: contact details, pronouns, colour formulas, service notes, general notes
@@ -216,12 +219,12 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 | Metric | Count |
 |--------|-------|
-| **Frontend** (TypeScript / React) | ~18,200 lines · 80 files |
-| **Backend** (Python / FastAPI) | ~14,500 lines · 82 files |
-| **Database migrations** (Alembic) | ~3,000 lines · 52 migrations |
-| **Total source** | **~35,700 lines** |
-| **Git commits** | 358 |
-| **API endpoints** | ~90 |
+| **Frontend** (TypeScript / React) | ~19,500 lines · 83 files |
+| **Backend** (Python / FastAPI) | ~14,900 lines · 73 files |
+| **Database migrations** (Alembic) | ~3,100 lines · 56 migrations |
+| **Total source** | **~37,500 lines** |
+| **Git commits** | 411 |
+| **API endpoints** | ~139 |
 | **Database entities** | 24 core models |
 
 ---
