@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { listSales } from '@/api/sales'
 import SaleSummary from '@/components/appointment-book/SaleSummary'
+import { useAuth } from '@/store/auth'
 
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -19,6 +20,9 @@ function fmt(s: string) {
 }
 
 export default function SalesPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin'
+
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgo())
   const [dateTo, setDateTo]     = useState(today())
   const [search, setSearch]     = useState('')
@@ -38,6 +42,14 @@ export default function SalesPage() {
     e.preventDefault()
     setSubmitted({ dateFrom, dateTo, search })
     setExpandedId(null)
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <p className="text-sm text-muted-foreground">Access restricted to admins.</p>
+      </div>
+    )
   }
 
   return (
@@ -101,7 +113,7 @@ export default function SalesPage() {
                 </button>
                 {expanded && (
                   <div className="px-4 pb-3">
-                    <SaleSummary saleId={sale.id} />
+                    <SaleSummary saleId={sale.id} isAdmin={isAdmin} />
                   </div>
                 )}
               </div>

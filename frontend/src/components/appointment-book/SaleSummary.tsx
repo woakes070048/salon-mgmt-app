@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 interface Props {
   appointmentId?: string
   saleId?: string
+  isAdmin?: boolean
 }
 
 function ItemEditRow({ item, onSave, saving }: {
@@ -182,7 +183,7 @@ function EditPaymentsDialog({
   )
 }
 
-export default function SaleSummary({ appointmentId, saleId }: Props) {
+export default function SaleSummary({ appointmentId, saleId, isAdmin = false }: Props) {
   const { t } = useTranslation()
   const queryKey = saleId
     ? ['sale', 'by-id', saleId]
@@ -224,23 +225,36 @@ export default function SaleSummary({ appointmentId, saleId }: Props) {
           {sale.items.map((item: SaleItem) => {
             const hasDiscount = parseFloat(item.discount_amount) > 0
             const isEditing = editingItem === item.id
+            const productFee = item.product_fee ? parseFloat(item.product_fee) : 0
             return (
               <div key={item.id}>
                 <div className="flex justify-between items-baseline">
-                  <span className="text-muted-foreground truncate max-w-[160px]">{item.description}</span>
+                  <div className="min-w-0 mr-2">
+                    <span className="text-muted-foreground truncate block">{item.description}</span>
+                    {item.provider_name && (
+                      <span className="text-[10px] text-muted-foreground/70">{item.provider_name}</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {item.is_business_reimbursed && (
                       <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">BR</span>
                     )}
                     {hasDiscount && <span className="text-muted-foreground">−${fmt(item.discount_amount)}</span>}
                     <span>${fmt(item.line_total)}</span>
-                    <button onClick={() => setEditingItem(isEditing ? null : item.id)}
-                      className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
-                      {isEditing ? 'cancel' : 'edit'}
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => setEditingItem(isEditing ? null : item.id)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
+                        {isEditing ? 'cancel' : 'edit'}
+                      </button>
+                    )}
                   </div>
                 </div>
-                {isEditing && (
+                {isAdmin && productFee > 0 && (
+                  <div className="text-[10px] text-muted-foreground/70 pl-0 mt-0.5">
+                    Product fee: −${productFee.toFixed(2)}
+                  </div>
+                )}
+                {isEditing && isAdmin && (
                   <ItemEditRow item={item} onSave={(body) => patchItemMutation.mutate({ itemId: item.id, body })}
                     saving={patchItemMutation.isPending} />
                 )}
@@ -288,7 +302,7 @@ export default function SaleSummary({ appointmentId, saleId }: Props) {
               </div>
             )
           })}
-          {!editing && (
+          {!editing && isAdmin && (
             <button
               onClick={() => setEditing(true)}
               className="text-[10px] text-muted-foreground hover:text-foreground underline pt-0.5"

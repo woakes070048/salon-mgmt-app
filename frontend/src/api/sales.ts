@@ -4,13 +4,15 @@ export interface SaleItem {
   id: string
   kind: string
   description: string
-  provider_id: string
+  provider_id: string | null
+  provider_name: string | null
   sequence: number
   quantity: number
   unit_price: string
   discount_amount: string
   line_total: string
   is_business_reimbursed: boolean
+  product_fee: string | null
 }
 
 export interface SalePayment {

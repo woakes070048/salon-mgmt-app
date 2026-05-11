@@ -22,6 +22,7 @@ import { Separator } from '@/components/ui/separator'
 import CheckoutPanel from '@/components/appointment-book/CheckoutPanel'
 import SaleSummary from '@/components/appointment-book/SaleSummary'
 import ConfirmationDialog from '@/components/appointment-book/ConfirmationDialog'
+import { useAuth } from '@/store/auth'
 
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   pending: 'secondary',
@@ -59,6 +60,8 @@ export default function AppointmentDetail({ item, appointment, date, onClose }: 
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { formatTime: ft } = useTimeFormat()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin'
   const [tab, setTab] = useState<Tab>('appointment')
   const [notesValue, setNotesValue] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -494,7 +497,7 @@ export default function AppointmentDetail({ item, appointment, date, onClose }: 
                     {t('appt.undo')}
                   </button>
                 </div>
-                <SaleSummary appointmentId={appointment.id} />
+                <SaleSummary appointmentId={appointment.id} isAdmin={isAdmin} />
               </div>
             )}
             {apptStatus === 'cancelled' && (

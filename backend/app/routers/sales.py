@@ -28,7 +28,8 @@ from app.models.promotion import TenantPromotion
 from app.models.retail import RetailItem
 from app.models.retail import RetailStockMovement, StockMovementKind
 from app.models.sale import Payment, Sale, SaleAppointment, SaleItem, SaleItemKind, SalePaymentEdit, SaleStatus
-from app.models.service import Service
+from app.models.provider import Provider
+from app.models.service import Service, ServiceCategory
 from app.models.tenant import Tenant
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -77,6 +78,7 @@ class SaleItemOut(BaseModel):
     kind: str
     description: str
     provider_id: str | None
+    provider_name: str | None
     sequence: int
     quantity: int
     unit_price: str
@@ -85,6 +87,7 @@ class SaleItemOut(BaseModel):
     is_business_reimbursed: bool
     promotion_id: str | None
     promotion_label: str | None
+    product_fee: str | None  # service items only; None for retail
 
 
 class PaymentOut(BaseModel):
@@ -113,6 +116,56 @@ class SaleOut(BaseModel):
     payments: list[PaymentOut]
 
 
+async def _enrich_items(
+    items: list[SaleItem],
+    db: AsyncSession,
+) -> dict[uuid.UUID, tuple[str | None, str | None]]:
+    """Return {item_id: (provider_name, product_fee_str)} for each item."""
+    result: dict[uuid.UUID, tuple[str | None, str | None]] = {}
+
+    provider_ids = {it.provider_id for it in items if it.provider_id}
+    providers_by_id: dict[uuid.UUID, str] = {}
+    if provider_ids:
+        rows = (await db.execute(
+            select(Provider.id, Provider.display_name).where(Provider.id.in_(provider_ids))
+        )).all()
+        providers_by_id = {r.id: r.display_name for r in rows}
+
+    appt_item_ids = {it.appointment_item_id for it in items if it.appointment_item_id}
+    fee_by_appt_item: dict[uuid.UUID, str] = {}
+    if appt_item_ids:
+        svc_rows = (await db.execute(
+            select(
+                AppointmentItem.id.label("appt_item_id"),
+                Service.default_cost.label("default_cost"),
+                ServiceCategory.name.label("cat_name"),
+            )
+            .join(Service, Service.id == AppointmentItem.service_id)
+            .join(ServiceCategory, ServiceCategory.id == Service.category_id)
+            .where(AppointmentItem.id.in_(appt_item_ids))
+        )).all()
+        for row in svc_rows:
+            cat = (row.cat_name or "").lower()
+            is_colour = "colour" in cat or "color" in cat or "colouring" in cat
+            default_cost = Decimal(str(float(row.default_cost or 0)))
+            fee_by_appt_item[row.appt_item_id] = (is_colour, default_cost)
+
+    for it in items:
+        pname = providers_by_id.get(it.provider_id) if it.provider_id else None
+        product_fee: str | None = None
+        if it.appointment_item_id and it.appointment_item_id in fee_by_appt_item:
+            is_colour, default_cost = fee_by_appt_item[it.appointment_item_id]
+            full_amount = Decimal(str(it.unit_price)) * Decimal(str(it.quantity))
+            if is_colour:
+                fee = full_amount * default_cost / Decimal("100")
+            else:
+                fee = default_cost * Decimal(str(it.quantity))
+            product_fee = str(_money(fee)) if fee > 0 else None
+        result[it.id] = (pname, product_fee)
+
+    return result
+
+
 def _serialize(
     sale: Sale,
     appointment_ids: list[str],
@@ -120,6 +173,7 @@ def _serialize(
     payments: list[Payment],
     methods_by_id: dict[uuid.UUID, TenantPaymentMethod],
     promos_by_id: dict[uuid.UUID, TenantPromotion] | None = None,
+    enrichment: dict[uuid.UUID, tuple[str | None, str | None]] | None = None,
 ) -> SaleOut:
     pb = promos_by_id or {}
     return SaleOut(
@@ -145,6 +199,7 @@ def _serialize(
                 kind=it.kind.value,
                 description=it.description,
                 provider_id=str(it.provider_id) if it.provider_id else None,
+                provider_name=(enrichment or {}).get(it.id, (None, None))[0],
                 sequence=it.sequence,
                 quantity=it.quantity,
                 unit_price=str(it.unit_price),
@@ -153,6 +208,7 @@ def _serialize(
                 is_business_reimbursed=it.is_business_reimbursed,
                 promotion_id=str(it.promotion_id) if it.promotion_id else None,
                 promotion_label=pb[it.promotion_id].label if it.promotion_id and it.promotion_id in pb else None,
+                product_fee=(enrichment or {}).get(it.id, (None, None))[1],
             )
             for it in items
         ],
@@ -598,7 +654,8 @@ async def get_sale(
         select(TenantPaymentMethod).where(TenantPaymentMethod.id.in_(method_ids))
     )).scalars().all() if method_ids else []
     methods_by_id = {m.id: m for m in methods}
-    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id)
+    enrichment = await _enrich_items(list(items), db)
+    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id, enrichment=enrichment)
 
 
 # ── GET /sales/by-appointment/{appointment_id} ────────────────────────────────
@@ -641,7 +698,8 @@ async def get_sale_by_appointment(
         await db.execute(select(TenantPaymentMethod).where(TenantPaymentMethod.id.in_(method_ids)))
     ).scalars().all() if method_ids else []
     methods_by_id = {m.id: m for m in methods}
-    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id)
+    enrichment = await _enrich_items(list(items), db)
+    return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id, enrichment=enrichment)
 
 
 # ── POST /sales/{sale_id}/send-receipt ────────────────────────────────────────
