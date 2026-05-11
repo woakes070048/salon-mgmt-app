@@ -74,6 +74,7 @@ jobs:
       - name: Upload as GitHub release
         run: |
           gh release create "backup-${STAMP}" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "DB backup ${STAMP}" \
             --notes "$(cat <<'EOF'
           Automated nightly backup — salon_lyol database.
@@ -91,13 +92,13 @@ jobs:
 
       - name: Rotate old backups (keep last 30)
         run: |
-          gh release list --limit 200 --json tagName \
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
             | python3 -c "
           import json, sys, subprocess
           tags = [r['tagName'] for r in json.load(sys.stdin) if r['tagName'].startswith('backup-')]
           tags.sort(reverse=True)
           for tag in tags[30:]:
-              subprocess.run(['gh','release','delete', tag,'--yes','--cleanup-tag'], check=False)
+              subprocess.run(['gh','release','delete', tag,'--repo', '$GITHUB_REPOSITORY', '--yes','--cleanup-tag'], check=False)
               print(f'Deleted {tag}')
           " || true
         env:
