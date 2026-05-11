@@ -423,6 +423,7 @@ function DetailsForm({
     pricing_type: (initial?.pricing_type ?? 'fixed') as PricingType,
     default_price: initial?.default_price ?? '',
     default_cost: initial?.default_cost ?? '',
+    is_cost_percent: initial?.is_cost_percent ?? false,
     duration_minutes: String(initial?.duration_minutes ?? 60),
     processing_offset_minutes: String(initial?.processing_offset_minutes ?? 0),
     processing_duration_minutes: String(initial?.processing_duration_minutes ?? 0),
@@ -446,6 +447,7 @@ function DetailsForm({
         pricing_type: form.pricing_type,
         default_price: form.default_price ? parseFloat(form.default_price) : null,
         default_cost: form.default_cost ? parseFloat(form.default_cost) : null,
+        is_cost_percent: form.is_cost_percent,
         duration_minutes: parseInt(form.duration_minutes, 10),
         processing_offset_minutes: parseInt(form.processing_offset_minutes, 10) || 0,
         processing_duration_minutes: parseInt(form.processing_duration_minutes, 10) || 0,
@@ -529,22 +531,33 @@ function DetailsForm({
           />
         </div>
         <div>
-          {(() => {
-            const cat = categories.find(c => c.id === form.category_id)
-            const isColour = cat ? /colour|color|colouring/i.test(cat.name) : false
-            return (
-              <>
-                <Label>{isColour ? 'Default cost (% of provider price) — optional' : t('services.default_cost')}</Label>
-                <input
-                  type="text" inputMode="decimal"
-                  value={form.default_cost}
-                  onChange={e => set('default_cost', e.target.value)}
-                  className="w-full mt-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
-                  placeholder={isColour ? 'e.g. 20 for 20%' : '0.00'}
-                />
-              </>
-            )
-          })()}
+          <Label>Product fee</Label>
+          <div className="flex gap-2 mt-1">
+            <input
+              type="text" inputMode="decimal"
+              value={form.default_cost}
+              onChange={e => set('default_cost', e.target.value)}
+              className="flex-1 border border-input rounded-md px-2 py-1.5 text-sm bg-background"
+              placeholder={form.is_cost_percent ? 'e.g. 10 for 10%' : '0.00'}
+            />
+            <div className="flex rounded-md border border-input overflow-hidden text-xs">
+              {(['$', '%'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => set('is_cost_percent', mode === '%')}
+                  className={`px-2.5 py-1.5 font-medium transition-colors ${
+                    (mode === '%') === form.is_cost_percent
+                      ? 'bg-foreground text-background'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                  }`}
+                >{mode}</button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {form.is_cost_percent ? 'Percentage of gross charged to provider' : 'Flat amount per service application'}
+          </p>
         </div>
         <div>
           <Label>{t('services.duration_label')}</Label>

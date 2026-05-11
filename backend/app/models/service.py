@@ -43,6 +43,7 @@ class Service(TenantScopedBase):
     )
     default_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     default_cost: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    is_cost_percent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     processing_offset_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     processing_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

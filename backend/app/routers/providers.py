@@ -281,6 +281,7 @@ async def _calc_payroll_line(
                 Service.id.label("service_id"),
                 Service.default_cost.label("default_cost"),
                 Service.default_price.label("default_price"),
+                Service.is_cost_percent.label("is_cost_percent"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
             .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
@@ -305,8 +306,7 @@ async def _calc_payroll_line(
     colour_fee = D("0")
 
     for row in service_rows:
-        cat = (row.cat_name or "").lower()
-        is_colour = "colour" in cat or "color" in cat or "colouring" in cat
+        is_colour = bool(row.is_cost_percent)
         default_cost = D(str(float(row.default_cost or 0)))
         full_amount = D(str(row.unit_price)) * D(str(row.quantity))
 
@@ -316,12 +316,10 @@ async def _calc_payroll_line(
         if is_colour:
             colour_revenue += commission_basis
             colour_count += 1
-            # Product fee always on full pre-discount amount — products were used regardless
             colour_fee += full_amount * default_cost / D("100")
         else:
             styling_revenue += commission_basis
             styling_count += 1
-            # Styling flat fee per service application
             styling_fee += default_cost * D(str(row.quantity))
 
     gross_service_revenue = styling_revenue + colour_revenue

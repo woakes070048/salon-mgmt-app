@@ -595,6 +595,7 @@ async def payroll_detail_report(
             Service.id.label("service_id"),
             Service.default_cost,
             Service.default_price,
+            Service.is_cost_percent,
             ServiceCategory.name.label("cat_name"),
         )
         .join(Sale, Sale.id == SaleItem.sale_id)
@@ -618,18 +619,15 @@ async def payroll_detail_report(
     service_rows: list[PayrollServiceRow] = []
 
     for r in svc_txn_rows:
-        cat = (r.cat_name or "").lower()
-        is_col = "colour" in cat or "color" in cat or "colouring" in cat
+        is_col = bool(r.is_cost_percent)
         default_cost = D(str(float(r.default_cost or 0)))
         qty = D(str(int(r.quantity or 1)))
-        full_amount = D(str(r.unit_price)) * qty        # pre-discount
-        line_total = D(str(r.line_total))               # what client paid
+        full_amount = D(str(r.unit_price)) * qty
+        line_total = D(str(r.line_total))
         is_br = bool(r.is_business_reimbursed)
 
-        # Commission basis: full amount if business-reimbursed, else client paid
         commission_basis = full_amount if is_br else line_total
 
-        # Product fee always on full pre-discount amount
         if is_col:
             fee = full_amount * default_cost / D("100")
             colour_gross += commission_basis; colour_fees += fee

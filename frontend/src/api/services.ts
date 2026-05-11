@@ -28,6 +28,7 @@ export interface ServiceDetail {
   pricing_type: PricingType
   default_price: string | null
   default_cost: string | null
+  is_cost_percent: boolean
   duration_minutes: number
   processing_offset_minutes: number
   processing_duration_minutes: number
@@ -46,6 +47,7 @@ export interface ServiceIn {
   pricing_type?: PricingType
   default_price?: number | null
   default_cost?: number | null
+  is_cost_percent?: boolean
   duration_minutes?: number
   processing_offset_minutes?: number
   processing_duration_minutes?: number

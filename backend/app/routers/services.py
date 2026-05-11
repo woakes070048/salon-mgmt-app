@@ -98,6 +98,7 @@ class ServiceDetailOut(BaseModel):
     pricing_type: str
     default_price: str | None
     default_cost: str | None
+    is_cost_percent: bool
     duration_minutes: int
     processing_offset_minutes: int
     processing_duration_minutes: int
@@ -125,6 +126,7 @@ def _to_detail(
         pricing_type=svc.pricing_type.value,
         default_price=str(svc.default_price) if svc.default_price is not None else None,
         default_cost=str(svc.default_cost) if svc.default_cost is not None else None,
+        is_cost_percent=svc.is_cost_percent,
         duration_minutes=svc.duration_minutes,
         processing_offset_minutes=svc.processing_offset_minutes,
         processing_duration_minutes=svc.processing_duration_minutes,
@@ -222,6 +224,7 @@ class ServiceIn(BaseModel):
     pricing_type: PricingType = PricingType.fixed
     default_price: float | None = None
     default_cost: float | None = None
+    is_cost_percent: bool = False
     duration_minutes: int = Field(default=60, ge=5)
     processing_offset_minutes: int = 0
     processing_duration_minutes: int = 0
@@ -240,6 +243,7 @@ class ServicePatch(BaseModel):
     pricing_type: PricingType | None = None
     default_price: float | None = None
     default_cost: float | None = None
+    is_cost_percent: bool | None = None
     duration_minutes: int | None = Field(default=None, ge=5)
     processing_offset_minutes: int | None = None
     processing_duration_minutes: int | None = None
@@ -318,6 +322,7 @@ async def create_service(
         pricing_type=body.pricing_type,
         default_price=body.default_price,
         default_cost=body.default_cost,
+        is_cost_percent=body.is_cost_percent,
         duration_minutes=body.duration_minutes,
         processing_offset_minutes=body.processing_offset_minutes,
         processing_duration_minutes=body.processing_duration_minutes,
