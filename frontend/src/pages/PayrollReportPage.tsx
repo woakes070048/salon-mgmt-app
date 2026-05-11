@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { format, addDays } from 'date-fns'
-import { Send, Printer, ClipboardCopy, RefreshCw } from 'lucide-react'
+import { Send, Printer, ClipboardCopy, RefreshCw, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getPayrollReport, sendPayrollEmail, type ProviderPayrollLine } from '@/api/providers'
+import { getPayrollReport, savePayrollHours, sendPayrollEmail, type ProviderPayrollLine } from '@/api/providers'
 import { getPayrollConfig } from '@/api/admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +43,8 @@ interface EditableLine {
   is_owner: boolean
   pay_basis: string
   scheduled_hours: number
+  actual_hours: number
+  hours_source: 'actual' | 'scheduled' | 'override'
   hourly_minimum: number | null
   service_commission: number
   retail_commission: number
@@ -174,13 +176,24 @@ function ReviewTable({
                 </td>
                 <td className="px-4 py-2 text-muted-foreground capitalize text-xs">{el.pay_basis}</td>
                 <td className="px-4 py-2 text-right">
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={el.scheduled_hours}
-                    onChange={e => onChange(el.provider_id, { scheduled_hours: parseFloat(e.target.value) || 0 })}
-                    className="w-20 h-7 text-xs text-right ml-auto"
-                  />
+                  <div className="flex flex-col items-end gap-0.5">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={el.scheduled_hours}
+                      onChange={e => onChange(el.provider_id, { scheduled_hours: parseFloat(e.target.value) || 0 })}
+                      className="w-20 h-7 text-xs text-right ml-auto"
+                    />
+                    <span className={`text-[9px] px-1 py-0 rounded leading-tight ${
+                      el.hours_source === 'override'   ? 'bg-amber-100 text-amber-700' :
+                      el.hours_source === 'actual'     ? 'bg-green-100 text-green-700' :
+                                                         'bg-muted text-muted-foreground'
+                    }`}>
+                      {el.hours_source === 'override' ? 'saved' :
+                       el.hours_source === 'actual'   ? `actual (${el.actual_hours}h)` :
+                                                        'scheduled'}
+                    </span>
+                  </div>
                 </td>
                 <td className="px-4 py-2 text-right">
                   <Input
@@ -269,7 +282,9 @@ export default function PayrollReportPage() {
       last_name: l.last_name,
       is_owner: l.is_owner,
       pay_basis: l.pay_basis,
-      scheduled_hours: l.scheduled_hours,
+      scheduled_hours: l.payroll_hours,   // editable field starts from payroll_hours (override/actual/scheduled)
+      actual_hours: l.actual_hours,
+      hours_source: l.hours_source,
       hourly_minimum: l.hourly_minimum,
       // For salary employees, surface gross_pay as the editable commission field
       service_commission: l.pay_basis === 'salary' ? l.gross_pay : l.service_commission,
@@ -308,6 +323,18 @@ export default function PayrollReportPage() {
 
   const sendMutation = useMutation({
     mutationFn: () => sendPayrollEmail({ to_email: toEmail, subject, body_text: emailText }),
+  })
+
+  const saveHoursMutation = useMutation({
+    mutationFn: () => savePayrollHours({
+      period_start: periodStart,
+      period_end: periodEnd,
+      overrides: editableLines.map(l => ({ provider_id: l.provider_id, hours: l.scheduled_hours })),
+    }),
+    onSuccess: () => {
+      // Refresh so hours_source badges update to 'override'
+      refetch()
+    },
   })
 
   function handleCopy() {
@@ -378,8 +405,22 @@ export default function PayrollReportPage() {
             <div data-panel="review" className="bg-white border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">{t('reports.review_section')}</h2>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{t('reports.review_subtitle')}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => saveHoursMutation.mutate()}
+                    disabled={saveHoursMutation.isPending}
+                    title="Save current hours for this period — overrides time entries on future runs"
+                  >
+                    <Save size={12} />
+                    {saveHoursMutation.isPending ? 'Saving…' : 'Save hours'}
+                  </Button>
+                  {saveHoursMutation.isSuccess && (
+                    <span className="text-xs text-green-600">Saved</span>
+                  )}
                   <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => handlePrint('review')}>
                     <Printer size={12} />
                     {t('reports.print_pdf')}

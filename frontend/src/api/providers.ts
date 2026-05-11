@@ -199,6 +199,9 @@ export interface ProviderPayrollLine {
   pay_type: string | null
   pay_basis: 'commission' | 'hourly' | 'salary' | 'n/a'
   scheduled_hours: number
+  actual_hours: number
+  payroll_hours: number
+  hours_source: 'actual' | 'scheduled' | 'override'
   hourly_minimum: number | null
   hourly_floor_amount: number
   service_commission: number
@@ -218,6 +221,14 @@ export interface PayrollReportOut {
 
 export function getPayrollReport(period_start: string, period_end: string): Promise<PayrollReportOut> {
   return api.get<PayrollReportOut>(`/providers/payroll-report?period_start=${period_start}&period_end=${period_end}`)
+}
+
+export function savePayrollHours(payload: {
+  period_start: string
+  period_end: string
+  overrides: { provider_id: string; hours: number }[]
+}): Promise<void> {
+  return api.post('/providers/payroll-hours', payload)
 }
 
 export function sendPayrollEmail(payload: {

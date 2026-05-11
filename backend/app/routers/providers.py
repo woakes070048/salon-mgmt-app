@@ -413,6 +413,7 @@ async def _calc_payroll_line(
 
     # ── Actual hours from time entries ────────────────────────────────────────
     from app.models.staff_time_entry import StaffTimeEntry
+    from sqlalchemy import text as _t
     entry_rows = (
         await db.execute(
             select(StaffTimeEntry).where(
@@ -424,14 +425,29 @@ async def _calc_payroll_line(
             )
         )
     ).scalars().all()
-    actual_hours = sum(
+    actual_hours = round(sum(
         (e.check_out_at - e.check_in_at).total_seconds() / 3600
         for e in entry_rows
-    )
-    actual_hours = round(actual_hours, 2)
+    ), 2)
     has_entries = len(entry_rows) > 0
-    payroll_hours = actual_hours if has_entries else scheduled_hours
-    hours_source = "actual" if has_entries else "scheduled"
+
+    # ── Admin-saved override takes precedence over everything ─────────────────
+    override_row = (await db.execute(
+        _t("SELECT hours FROM payroll_hour_overrides "
+           "WHERE tenant_id = :tid AND provider_id = :pid "
+           "AND period_start = :ps AND period_end = :pe"),
+        {"tid": tid, "pid": pid, "ps": period_start, "pe": period_end},
+    )).fetchone()
+
+    if override_row:
+        payroll_hours = float(override_row.hours)
+        hours_source = "override"
+    elif has_entries:
+        payroll_hours = actual_hours
+        hours_source = "actual"
+    else:
+        payroll_hours = scheduled_hours
+        hours_source = "scheduled"
 
     # ── Pay basis ─────────────────────────────────────────────────────────────
     hourly_min = float(p.hourly_minimum or 0)
@@ -1062,3 +1078,42 @@ async def get_payroll(
         vacation_pay=line.vacation_pay,
         gross_pay=line.gross_pay,
     )
+
+
+# ── Save payroll hour overrides ───────────────────────────────────────────────
+
+class PayrollHourOverrideIn(BaseModel):
+    provider_id: str
+    hours: float
+
+class SavePayrollHoursBody(BaseModel):
+    period_start: str   # YYYY-MM-DD
+    period_end: str     # YYYY-MM-DD
+    overrides: list[PayrollHourOverrideIn]
+
+
+@router.post("/payroll-hours", status_code=204)
+async def save_payroll_hours(
+    body: SavePayrollHoursBody,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Destructively save hour overrides for a pay period.
+    These take precedence over actual time entries and scheduled hours."""
+    from sqlalchemy import text as _t
+    from datetime import date as _date
+    tid = current_user.tenant_id
+    ps = _date.fromisoformat(body.period_start)
+    pe = _date.fromisoformat(body.period_end)
+
+    for ov in body.overrides:
+        pid = uuid.UUID(ov.provider_id)
+        await db.execute(_t("""
+            INSERT INTO payroll_hour_overrides
+                (tenant_id, provider_id, period_start, period_end, hours, created_at, updated_at)
+            VALUES (:tid, :pid, :ps, :pe, :hours, NOW(), NOW())
+            ON CONFLICT (tenant_id, provider_id, period_start, period_end)
+            DO UPDATE SET hours = EXCLUDED.hours, updated_at = NOW()
+        """), {"tid": tid, "pid": pid, "ps": ps, "pe": pe, "hours": ov.hours})
+
+    await db.commit()
