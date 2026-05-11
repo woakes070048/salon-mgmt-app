@@ -94,7 +94,12 @@ export default function PayrollDetailPage() {
               <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
                 <Download size={14} />Export CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5" title="Print / Save PDF">
+              <Button variant="outline" size="sm" onClick={() => {
+                const prev = document.title
+                document.title = `${data.provider_name} Payroll Detail ${query!.start} to ${query!.end}`
+                window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
+                window.print()
+              }} className="gap-1.5" title="Print / Save PDF">
                 <Printer size={14} />Print
               </Button>
             </div>

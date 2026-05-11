@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -345,9 +345,16 @@ async def _calc_payroll_line(
     # item (sale_items.provider_id) — NOT to every provider who shared the
     # appointment. This matches Milano: the Staff column on each receipt line
     # determines who earns the retail commission.
+    # Returns are imported with both unit_price and quantity negative, making
+    # line_total positive even though revenue should be negative. Correct by
+    # negating line_total whenever quantity < 0.
+    signed_retail = case(
+        (SaleItem.quantity < 0, -func.abs(SaleItem.line_total)),
+        else_=SaleItem.line_total,
+    )
     retail_total = (
         await db.execute(
-            select(func.coalesce(func.sum(SaleItem.line_total), D("0")))
+            select(func.coalesce(func.sum(signed_retail), D("0")))
             .join(Sale, Sale.id == SaleItem.sale_id)
             .where(
                 SaleItem.tenant_id == tid,
