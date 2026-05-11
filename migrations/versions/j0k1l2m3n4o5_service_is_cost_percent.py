@@ -1,22 +1,21 @@
 """service is_cost_percent flag
 
-Revision ID: a2b3c4d5e6f7
-Revises: z1a2b3c4d5e6
+Revision ID: j0k1l2m3n4o5
+Revises: i9j0k1l2m3n4
 Create Date: 2026-05-11
 
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = 'a2b3c4d5e6f7'
-down_revision = 'z1a2b3c4d5e6'
+revision = 'j0k1l2m3n4o5'
+down_revision = 'i9j0k1l2m3n4'
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.add_column('services', sa.Column('is_cost_percent', sa.Boolean(), nullable=False, server_default='false'))
-    # Existing colour-category services become percent-based
     op.execute("""
         UPDATE services
         SET is_cost_percent = true
