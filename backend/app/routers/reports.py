@@ -683,6 +683,9 @@ async def payroll_detail_report(
             SaleItem.provider_id == pid,
             cast(Sale.completed_at, SADate) >= period_start,
             cast(Sale.completed_at, SADate) <= period_end,
+            ~func.lower(SaleItem.description).contains("gift card"),
+            ~func.lower(SaleItem.description).contains("gift certificate"),
+            ~func.lower(SaleItem.description).contains("gift card/certificate"),
         )
         .order_by(Sale.completed_at)
     )).all()
