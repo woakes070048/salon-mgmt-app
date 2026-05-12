@@ -208,14 +208,17 @@ class ProviderPayrollLine(BaseModel):
     pay_basis: str        # "commission" | "hourly" | "salary" | "n/a"
     scheduled_hours: float
     actual_hours: float        # sum of checked-out time entries; 0 if none recorded
-    hours_source: str          # "actual" | "scheduled"
+    hours_source: str          # "actual" | "scheduled" | "override"
     payroll_hours: float       # whichever is used for the floor calculation
     hourly_minimum: float | None
     hourly_floor_amount: float
     service_commission: float
+    service_commission_source: str = "calculated"   # "calculated" | "override"
     retail_revenue: float
     retail_commission: float
+    retail_commission_source: str = "calculated"
     vacation_pct: float
+    vacation_pct_source: str = "calculated"
     gross_before_vacation: float
     vacation_pay: float
     gross_pay: float
@@ -482,21 +485,26 @@ async def _calc_payroll_line(
     gross_pay = round(gross_before_vac + vacation_pay, 2)
 
     # Apply admin overrides for commission and vacation if present
-    final_service_commission = (
-        float(override_row.service_commission_override)
-        if override_row and override_row.service_commission_override is not None
-        else round(float(commission_on_services), 2)
-    )
-    final_retail_commission = (
-        float(override_row.retail_commission_override)
-        if override_row and override_row.retail_commission_override is not None
-        else round(float(retail_commission), 2)
-    )
-    final_vacation_pct = (
-        float(override_row.vacation_pct_override)
-        if override_row and override_row.vacation_pct_override is not None
-        else vacation_pct_val
-    )
+    if override_row and override_row.service_commission_override is not None:
+        final_service_commission = float(override_row.service_commission_override)
+        svc_source = "override"
+    else:
+        final_service_commission = round(float(commission_on_services), 2)
+        svc_source = "calculated"
+
+    if override_row and override_row.retail_commission_override is not None:
+        final_retail_commission = float(override_row.retail_commission_override)
+        ret_source = "override"
+    else:
+        final_retail_commission = round(float(retail_commission), 2)
+        ret_source = "calculated"
+
+    if override_row and override_row.vacation_pct_override is not None:
+        final_vacation_pct = float(override_row.vacation_pct_override)
+        vac_source = "override"
+    else:
+        final_vacation_pct = vacation_pct_val
+        vac_source = "calculated"
     # Recompute gross with any overridden values
     if pay_type_val == "commission":
         total_commission_override = final_service_commission + final_retail_commission
@@ -522,9 +530,12 @@ async def _calc_payroll_line(
         hourly_minimum=hourly_min if hourly_min else None,
         hourly_floor_amount=hourly_floor,
         service_commission=final_service_commission,
+        service_commission_source=svc_source,
         retail_revenue=round(float(retail_revenue), 2),
         retail_commission=final_retail_commission,
+        retail_commission_source=ret_source,
         vacation_pct=final_vacation_pct,
+        vacation_pct_source=vac_source,
         gross_before_vacation=round(gross_before_vac, 2),
         vacation_pay=vacation_pay,
         gross_pay=gross_pay,
