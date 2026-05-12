@@ -1674,3 +1674,20 @@ Logged-in clients can see past online orders.
 - Guest orders are not linked to an account (guest email only); account matching deferred to v2
 
 **API:** `GET /shop/orders/mine` — returns orders where `client_id` matches the logged-in user's linked client record.
+
+### P-PAYROLL-1 · Product fee effective-date history ⚠️ HIGH PRIORITY (parallel run)
+
+**The problem:** The payroll report always uses the *current* catalog product fee. A fee change made after a pay period closes will retroactively affect that period's report. Example: Olaplex 10% fee was added after April 15 but showed up in the March 16 – April 15 payroll run, causing a $3.50 discrepancy vs. Milano.
+
+**Business rule:** Fee decisions are finalized within the current pay period. After the period closes they are non-restateable.
+
+**What to build:**
+
+- Add `effective_from` (date, not null, default today) to the `services` table (migration).
+- Create a `service_fee_history` table: `service_id`, `effective_from`, `product_fee`, `is_cost_percent`, `created_by_user_id`, `created_at`. Populated by a trigger or application-side hook whenever `services.product_fee` or `services.is_cost_percent` changes.
+- Update `_calc_payroll_line` to join against `service_fee_history` using the fee row where `effective_from <= period_end` (most recent per service). Falls back to current value if no history row exists.
+- Services page: show fee change history per service (last 5 changes with dates).
+
+**Workaround until built:** Manually zero the product fee on the affected sale item via the Sales edit UI. The sale audit log records the change.
+
+**Depends on:** None — standalone.
