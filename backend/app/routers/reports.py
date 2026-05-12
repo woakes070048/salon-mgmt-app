@@ -161,23 +161,35 @@ async def monthly_report(
         ).scalar() or 0
     ))
 
-    # ── Retail returns (items with negative quantity — returned product) ──────────
+    # ── Retail returns (items with negative quantity — returned product + tax) ─────
     # Milano encodes returns with both unit_price and quantity negative, so
-    # line_total ends up positive. Filter on quantity < 0 and sum abs(line_total).
-    retail_returns = Decimal(str(
-        (
-            await db.execute(
-                select(func.coalesce(func.sum(func.abs(SaleItem.line_total)), 0))
-                .join(Sale, Sale.id == SaleItem.sale_id)
-                .where(
-                    *completed,
-                    SaleItem.kind == SaleItemKind.retail,
-                    SaleItem.quantity < 0,
-                    ~_is_gift_card,
-                )
+    # line_total ends up positive. The returned amount includes tax (customer gets
+    # back what they paid), so we sum abs(line_total) × (1 + GST + PST) per item,
+    # weighted by the item's proportional share of the sale's actual tax.
+    return_rows = (
+        await db.execute(
+            select(
+                func.abs(SaleItem.line_total).label("product"),
+                Sale.subtotal.label("sale_sub"),
+                Sale.gst_amount.label("sale_gst"),
+                Sale.pst_amount.label("sale_pst"),
             )
-        ).scalar() or 0
-    ))
+            .join(Sale, Sale.id == SaleItem.sale_id)
+            .where(
+                *completed,
+                SaleItem.kind == SaleItemKind.retail,
+                SaleItem.quantity < 0,
+                ~_is_gift_card,
+            )
+        )
+    ).all()
+    retail_returns = Decimal("0")
+    for rr in return_rows:
+        product = Decimal(str(rr.product))
+        sub = Decimal(str(rr.sale_sub)) if rr.sale_sub else Decimal("1")
+        pct = product / sub if sub else Decimal("0")
+        tax = pct * (Decimal(str(rr.sale_gst)) + Decimal(str(rr.sale_pst)))
+        retail_returns += product + tax
 
     # ── Gift card sales (retail items whose description mentions gift/g.c.) ────
     gift_card_total = Decimal(str(
