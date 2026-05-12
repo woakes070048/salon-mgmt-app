@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     briefing_from_address: str = ""
     briefing_email_to: str = ""
 
+    # Auth0 SSO — leave empty to disable social login
+    auth0_domain: str = ""
+    auth0_client_id: str = ""
+    auth0_client_secret: str = ""
+    auth0_callback_url: str = "http://localhost:8000/auth/callback"
+
     # Inbound email webhook — Resend svix signing secret (whsec_...)
     # Leave empty in development to skip signature validation.
     resend_webhook_secret: str = ""

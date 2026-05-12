@@ -22,12 +22,13 @@ class User(TenantScopedBase):
     __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)
 
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False, default=UserRole.staff)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     language_preference: Mapped[str] = mapped_column(String(5), nullable=False, default="en")
+    auth0_sub: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
 
 
 class LoginLog(TenantScopedBase):

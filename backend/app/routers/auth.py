@@ -4,8 +4,11 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +59,7 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -299,6 +302,121 @@ async def update_me(
     )
 
 
+@router.get("/oauth/start")
+async def oauth_start(provider: str) -> RedirectResponse:
+    if not settings.auth0_domain or not settings.auth0_client_id:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="SSO not configured")
+    if provider not in ("google", "apple"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown provider")
+    connection = "google-oauth2" if provider == "google" else "apple"
+    state = secrets.token_urlsafe(16)
+    params = urlencode({
+        "response_type": "code",
+        "client_id": settings.auth0_client_id,
+        "redirect_uri": settings.auth0_callback_url,
+        "scope": "openid email profile",
+        "connection": connection,
+        "state": state,
+    })
+    resp = RedirectResponse(f"https://{settings.auth0_domain}/authorize?{params}")
+    resp.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=300)
+    return resp
+
+
+@router.get("/callback")
+async def oauth_callback(
+    code: str,
+    state: str,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RedirectResponse:
+    cookie_state = request.cookies.get("oauth_state")
+    if not cookie_state or cookie_state != state:
+        return RedirectResponse(f"{settings.frontend_url}/login?error=state_mismatch")
+
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            f"https://{settings.auth0_domain}/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "client_id": settings.auth0_client_id,
+                "client_secret": settings.auth0_client_secret,
+                "code": code,
+                "redirect_uri": settings.auth0_callback_url,
+            },
+        )
+    if token_resp.status_code != 200:
+        return RedirectResponse(f"{settings.frontend_url}/login?error=token_exchange")
+
+    async with httpx.AsyncClient() as client:
+        userinfo_resp = await client.get(
+            f"https://{settings.auth0_domain}/userinfo",
+            headers={"Authorization": f"Bearer {token_resp.json()['access_token']}"},
+        )
+    if userinfo_resp.status_code != 200:
+        return RedirectResponse(f"{settings.frontend_url}/login?error=userinfo")
+
+    info = userinfo_resp.json()
+    auth0_sub: str = info["sub"]
+    email: str | None = info.get("email")
+    name_parts = (info.get("name") or "").split(maxsplit=1)
+    given_name: str | None = info.get("given_name") or (name_parts[0] if name_parts else None)
+    family_name: str | None = info.get("family_name") or (name_parts[1] if len(name_parts) > 1 else None)
+
+    tenant = (await db.execute(
+        select(Tenant).where(Tenant.slug == settings.default_tenant_slug, Tenant.is_active == True)  # noqa: E712
+    )).scalar_one_or_none()
+    if tenant is None:
+        return RedirectResponse(f"{settings.frontend_url}/login?error=no_tenant")
+
+    user = (await db.execute(
+        select(User).where(User.auth0_sub == auth0_sub, User.tenant_id == tenant.id)
+    )).scalar_one_or_none()
+
+    if user is None and email:
+        user = (await db.execute(
+            select(User).where(User.email == email, User.tenant_id == tenant.id, User.is_active == True)  # noqa: E712
+        )).scalar_one_or_none()
+        if user:
+            user.auth0_sub = auth0_sub
+
+    if user is None:
+        if not email:
+            return RedirectResponse(f"{settings.frontend_url}/login?error=no_email")
+        user = User(
+            tenant_id=tenant.id,
+            email=email,
+            password_hash=None,
+            role=UserRole.guest,
+            auth0_sub=auth0_sub,
+            first_name=given_name,
+            last_name=family_name,
+        )
+        db.add(user)
+        await db.flush()
+        client_obj = Client(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            first_name=given_name or "",
+            last_name=family_name or "",
+            email=email,
+            client_code=f"G{random.randint(10000, 99999)}",
+        )
+        db.add(client_obj)
+
+    db.add(LoginLog(tenant_id=user.tenant_id, user_id=user.id, email=user.email))
+    await db.commit()
+
+    token = create_access_token(
+        subject=str(user.id),
+        role=user.role.value,
+        tenant_id=str(user.tenant_id),
+    )
+    resp = RedirectResponse(f"{settings.frontend_url}/oauth-callback?token={token}")
+    resp.delete_cookie("oauth_state")
+    return resp
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
@@ -310,6 +428,8 @@ async def change_password(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
+    if current_user.password_hash is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSO accounts do not have a password")
     if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
     current_user.password_hash = hash_password(body.new_password)

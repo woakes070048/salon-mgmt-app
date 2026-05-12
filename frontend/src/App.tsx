@@ -50,6 +50,7 @@ import TransactionReportPage from '@/pages/TransactionReportPage'
 import PayrollDetailPage from '@/pages/PayrollDetailPage'
 import DataImportPage from '@/pages/DataImportPage'
 import LoginLogsPage from '@/pages/LoginLogsPage'
+import OAuthCallbackPage from '@/pages/OAuthCallbackPage'
 
 function StaffShell() {
   const { user, loading } = useAuth()
@@ -78,6 +79,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
 
       <Route
         path="/my-requests"
