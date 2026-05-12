@@ -608,6 +608,89 @@ Key tables should record which user created or last modified a record, not just 
 
 ---
 
+### P2-31 · Professional product catalog + extended retail model
+
+Extends the existing retail catalog to support **professional products** — items used by stylists during services (hair colour, peroxide, toners, bleach) that are tracked by volume rather than unit, and are not routinely sold to clients but may optionally be charged as an add-on.
+
+**Schema changes to `retail_items`:**
+- `kind`: `'retail' | 'professional'` (default `'retail'`)
+- `unit_of_measure`: `'unit' | 'ml' | 'g' | 'oz'` (default `'unit'`; professional products typically `ml` or `g`)
+- `available_at_checkout`: `boolean` (default `true` for retail, `false` for professional — controls whether the product appears in the checkout picker)
+- `barcode`: `string | null` — UPC-A, EAN-13, or QR code value for scanner lookup
+
+**Schema changes to `retail_stock_movements`:**
+- `quantity` promoted from `integer` to `numeric(10,3)` — professional products are measured in fractional volumes (e.g., 45.5 ml of colour)
+
+**UI — Retail page:**
+- Add tabs: **Retail** (existing behaviour) · **Professional** (new)
+- Professional tab: same list + edit pattern as retail, but shows unit of measure on each item and stock displayed with one decimal (e.g., "450.0 ml on hand")
+- Both tabs share the same "Add item" form with `kind` pre-selected based on active tab
+- `available_at_checkout` toggle on the professional item form — when on, the product appears in checkout as a chargeable add-on (e.g., "Additional colour — $X")
+
+**Barcode field:**
+- Added to the item edit form (both retail and professional) as an optional field
+- Used by the scanner (P2-32) to look up products; not shown in the standard list view
+
+**Migration:** add columns to `retail_items`; alter `retail_stock_movements.quantity` column type. Pre-populate `kind='retail'` and `unit_of_measure='unit'` on all existing rows; `available_at_checkout=true` on all existing retail rows.
+
+---
+
+### P2-32 · Barcode scanner — desktop
+
+Staff scan product barcodes on desktop to speed up receiving, checkout, and inventory counting. Works with:
+- **USB / Bluetooth handheld scanners** (most common in retail environments) — these behave as keyboards and inject the barcode string as fast keystroke input into whatever input is focused. A short debounce (50–100 ms) detects scan vs manual typing.
+- **Browser camera scan** — for devices without a scanner; uses `@zxing/browser` to decode barcodes from the webcam feed.
+
+**Shared `BarcodeInput` component:**
+A reusable input that wraps a standard `<input type="text">` with:
+- A scan icon button that opens a camera modal (uses `@zxing/browser`)
+- Keystroke timing detection: if characters arrive faster than ~80 ms apart, treat as a scanner event and auto-submit on Enter (or on the scan's trailing carriage return)
+- `onScan(barcode: string)` callback — caller decides what to do with the value
+- Falls back gracefully to manual text entry when no barcode is available
+
+**Integrated in three places:**
+
+1. **Retail / Professional page — Receive stock:**
+   - "Receive" button opens a receive dialog; `BarcodeInput` at the top looks up the product by `barcode` field; populates the item name and quantity field for staff to confirm; submits a `kind=receive` stock movement.
+
+2. **CheckoutPanel — Add retail item:**
+   - Replace (or augment) the existing dropdown picker with a `BarcodeInput`; scan or type barcode → product found → added to the sale as a `kind=retail` line item (or `kind=professional` if `available_at_checkout=true`).
+
+3. **Inventory count (new flow on Retail page):**
+   - "Start count" mode: staff scan products one by one; each scan adds a line to a count sheet with the product name and a quantity input; on "Submit count", creates `kind=adjust` movements for each item with a variance note "Physical count".
+
+**Backend:**
+- `GET /retail-items/by-barcode/{barcode}` — looks up an active retail or professional item by `barcode` field; returns the item or 404. Used by all three scanner flows.
+
+---
+
+### P2-33 · Professional product use recording (in-service)
+
+When a stylist performs a colour service, they record which professional products they used and in what quantity. This creates accurate stock movements and can eventually inform product fee calculations per service.
+
+**Workflow (desktop, from appointment detail):**
+- On the appointment detail panel, a new "Products used" section appears for service items where the service category is colour
+- Staff tap "+ Add product used" → picker showing professional products → enter quantity (in the product's UOM)
+- Each entry creates a `kind=use_in_service` `RetailStockMovement` linked to the `appointment_item_id`
+- Entries editable until the appointment is marked completed; read-only after
+
+**Workflow (mobile, from PM-4 appointment detail):**
+- Same "Products used" section on the mobile appointment detail
+- `BarcodeInput` equivalent using the device camera (`expo-camera` with barcode scanning)
+- Optimised for scanning during the service: scan product → enter ml used → save; designed for one-handed use
+
+**Backend:**
+- `POST /retail-items/{id}/use-in-service` — body: `{ appointment_item_id, quantity }`. Validates the item is `kind=professional`. Creates a signed stock movement (`quantity` negative, `kind=use_in_service`). Returns the updated on-hand count.
+- `GET /appointments/{id}/products-used` — returns all `use_in_service` movements linked to items of this appointment.
+
+**Stock movement kind addition:** add `use_in_service` to the `StockMovementKind` enum (migration required).
+
+**Reporting:** in-service usage surfaced on the professional product detail page as a usage log (date, appointment, provider, quantity). Useful for auditing product consumption and informing reorder quantities.
+
+**Out of scope v1:** automatic product fee recalculation based on actual usage (the current payroll fee uses `Service.default_cost` as a proxy rate — refining this to use actual scanned quantities is a future enhancement once usage data is established).
+
+---
+
 ### P-CLEAN · ✅ Complete
 
 All references to the previous salon software have been removed:
@@ -1324,7 +1407,32 @@ Provider sends the client a pre-visit summary with estimated duration and cost b
 
 ---
 
-### PM-9 · App Store + Play Store submission
+### PM-9 · Barcode scanning (mobile)
+
+Native barcode scanning using `expo-camera` with `onBarcodeScanned`. Surfaces in three places within the mobile app, mirroring the desktop scanner (P2-32) but using the device camera natively.
+
+**Receive stock:**
+- From the More tab → Inventory → "Receive shipment": scan product barcode → confirm item name → enter quantity → submits `kind=receive` stock movement
+- Works for both retail and professional items
+
+**Checkout — add retail/professional item to sale:**
+- In the PM-5 checkout flow: scan icon in the items section → camera opens → scan barcode → matching product added to the sale
+- Replaces/augments the manual product picker on mobile
+
+**Professional product use recording (extends P2-33):**
+- From the appointment detail (after client arrived): "Products used" section
+- Scan barcode → enter quantity in UOM (ml, g, unit) → saves a `kind=use_in_service` movement linked to the appointment item
+- Designed for one-handed use during a service: quick scan + quantity entry, no navigation needed
+- Uses the same `POST /retail-items/{id}/use-in-service` endpoint as desktop (P2-33)
+
+**Inventory count:**
+- From More tab → Inventory → "Count": scan + enter counted quantity for each item; submit creates `kind=adjust` movements
+
+**Depends on:** P2-31 (barcode field on products), P2-32 (shared backend lookup endpoint `GET /retail-items/by-barcode/{barcode}`), P2-33 (use-in-service endpoint).
+
+---
+
+### PM-10 · App Store + Play Store submission
 
 - EAS Build for production iOS + Android builds via GitHub Actions
 - Apple App Store: App Store Connect listing, TestFlight first
@@ -1333,6 +1441,8 @@ Provider sends the client a pre-visit summary with estimated duration and cost b
 - Privacy policy required (push notification permission, if added later)
 
 **Phasing:** TestFlight / internal Play track after Salon Lyol UAT on mobile.
+
+(Renumbered from PM-9 to accommodate PM-9 barcode scanning.)
 
 ---
 
