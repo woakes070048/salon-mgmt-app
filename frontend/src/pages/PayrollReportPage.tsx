@@ -329,10 +329,15 @@ export default function PayrollReportPage() {
     mutationFn: () => savePayrollHours({
       period_start: periodStart,
       period_end: periodEnd,
-      overrides: editableLines.map(l => ({ provider_id: l.provider_id, hours: l.scheduled_hours })),
+      overrides: editableLines.map(l => ({
+        provider_id: l.provider_id,
+        hours: l.scheduled_hours,
+        service_commission: l.service_commission,
+        retail_commission: l.retail_commission,
+        vacation_pct: l.vacation_pct,
+      })),
     }),
     onSuccess: () => {
-      // Refresh so hours_source badges update to 'override'
       refetch()
     },
   })
@@ -413,10 +418,10 @@ export default function PayrollReportPage() {
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => saveHoursMutation.mutate()}
                     disabled={saveHoursMutation.isPending}
-                    title="Save current hours for this period — overrides time entries on future runs"
+                    title="Save all adjustments for this period — hours, commissions, and vacation % are restored on recalculate"
                   >
                     <Save size={12} />
-                    {saveHoursMutation.isPending ? 'Saving…' : 'Save hours'}
+                    {saveHoursMutation.isPending ? 'Saving…' : 'Save'}
                   </Button>
                   {saveHoursMutation.isSuccess && (
                     <span className="text-xs text-green-600">Saved</span>

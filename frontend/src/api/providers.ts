@@ -226,7 +226,13 @@ export function getPayrollReport(period_start: string, period_end: string): Prom
 export function savePayrollHours(payload: {
   period_start: string
   period_end: string
-  overrides: { provider_id: string; hours: number }[]
+  overrides: {
+    provider_id: string
+    hours: number
+    service_commission: number | null
+    retail_commission: number | null
+    vacation_pct: number | null
+  }[]
 }): Promise<void> {
   return api.post('/providers/payroll-hours', payload)
 }

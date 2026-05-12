@@ -442,7 +442,8 @@ async def _calc_payroll_line(
 
     # ── Admin-saved override takes precedence over everything ─────────────────
     override_row = (await db.execute(
-        _t("SELECT hours FROM payroll_hour_overrides "
+        _t("SELECT hours, service_commission_override, retail_commission_override, vacation_pct_override "
+           "FROM payroll_hour_overrides "
            "WHERE tenant_id = :tid AND provider_id = :pid "
            "AND period_start = :ps AND period_end = :pe"),
         {"tid": tid, "pid": pid, "ps": period_start, "pe": period_end},
@@ -480,6 +481,31 @@ async def _calc_payroll_line(
     vacation_pay = round(gross_before_vac * vacation_pct_val / 100, 2)
     gross_pay = round(gross_before_vac + vacation_pay, 2)
 
+    # Apply admin overrides for commission and vacation if present
+    final_service_commission = (
+        float(override_row.service_commission_override)
+        if override_row and override_row.service_commission_override is not None
+        else round(float(commission_on_services), 2)
+    )
+    final_retail_commission = (
+        float(override_row.retail_commission_override)
+        if override_row and override_row.retail_commission_override is not None
+        else round(float(retail_commission), 2)
+    )
+    final_vacation_pct = (
+        float(override_row.vacation_pct_override)
+        if override_row and override_row.vacation_pct_override is not None
+        else vacation_pct_val
+    )
+    # Recompute gross with any overridden values
+    if pay_type_val == "commission":
+        total_commission_override = final_service_commission + final_retail_commission
+        gross_before_vac = max(total_commission_override, hourly_floor)
+    elif pay_type_val in ("hourly", "salary"):
+        gross_before_vac = gross_before_vac  # unchanged
+    vacation_pay = round(gross_before_vac * final_vacation_pct / 100, 2)
+    gross_pay = round(gross_before_vac + vacation_pay, 2)
+
     return ProviderPayrollLine(
         provider_id=str(p.id),
         first_name=p.first_name,
@@ -495,10 +521,10 @@ async def _calc_payroll_line(
         payroll_hours=round(payroll_hours, 2),
         hourly_minimum=hourly_min if hourly_min else None,
         hourly_floor_amount=hourly_floor,
-        service_commission=round(float(commission_on_services), 2),
+        service_commission=final_service_commission,
         retail_revenue=round(float(retail_revenue), 2),
-        retail_commission=round(float(retail_commission), 2),
-        vacation_pct=vacation_pct_val,
+        retail_commission=final_retail_commission,
+        vacation_pct=final_vacation_pct,
         gross_before_vacation=round(gross_before_vac, 2),
         vacation_pay=vacation_pay,
         gross_pay=gross_pay,
@@ -1094,6 +1120,9 @@ async def get_payroll(
 class PayrollHourOverrideIn(BaseModel):
     provider_id: str
     hours: float
+    service_commission: float | None = None
+    retail_commission: float | None = None
+    vacation_pct: float | None = None
 
 class SavePayrollHoursBody(BaseModel):
     period_start: str   # YYYY-MM-DD
@@ -1107,8 +1136,8 @@ async def save_payroll_hours(
     current_user: AdminUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Destructively save hour overrides for a pay period.
-    These take precedence over actual time entries and scheduled hours."""
+    """Save all editable payroll overrides for a pay period (hours, commissions, vacation %).
+    These take precedence over calculated values when the report is regenerated."""
     from sqlalchemy import text as _t
     from datetime import date as _date
     tid = current_user.tenant_id
@@ -1119,10 +1148,25 @@ async def save_payroll_hours(
         pid = uuid.UUID(ov.provider_id)
         await db.execute(_t("""
             INSERT INTO payroll_hour_overrides
-                (tenant_id, provider_id, period_start, period_end, hours, created_at, updated_at)
-            VALUES (:tid, :pid, :ps, :pe, :hours, NOW(), NOW())
+                (tenant_id, provider_id, period_start, period_end, hours,
+                 service_commission_override, retail_commission_override, vacation_pct_override,
+                 created_at, updated_at)
+            VALUES (:tid, :pid, :ps, :pe, :hours,
+                    :svc_comm, :ret_comm, :vac_pct,
+                    NOW(), NOW())
             ON CONFLICT (tenant_id, provider_id, period_start, period_end)
-            DO UPDATE SET hours = EXCLUDED.hours, updated_at = NOW()
-        """), {"tid": tid, "pid": pid, "ps": ps, "pe": pe, "hours": ov.hours})
+            DO UPDATE SET
+                hours = EXCLUDED.hours,
+                service_commission_override = EXCLUDED.service_commission_override,
+                retail_commission_override = EXCLUDED.retail_commission_override,
+                vacation_pct_override = EXCLUDED.vacation_pct_override,
+                updated_at = NOW()
+        """), {
+            "tid": tid, "pid": pid, "ps": ps, "pe": pe,
+            "hours": ov.hours,
+            "svc_comm": ov.service_commission,
+            "ret_comm": ov.retail_commission,
+            "vac_pct": ov.vacation_pct,
+        })
 
     await db.commit()
