@@ -78,6 +78,18 @@ export default function ReportsPage() {
   const netSales = report ? parseFloat(report.subtotal) : 0
   const payrollPct = payrollTotal > 0 && netSales > 0 ? (payrollTotal / netSales) * 100 : null
 
+  // Grand total = before-tax + taxes + gift cards − on-account sales + on-account payments
+  // Matches Milano formula. report.total is raw sum(Sale.total) and diverges due to cashback
+  // and on-account treatment, so we compute from the displayed line items instead.
+  const grandTotal = report
+    ? parseFloat(report.subtotal)
+      + parseFloat(report.gst_amount)
+      + parseFloat(report.pst_amount)
+      + parseFloat(report.gift_card_total)
+      - parseFloat(report.on_account_sales)
+      + parseFloat(report.on_account_payments)
+    : 0
+
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
 
   return (
@@ -121,13 +133,13 @@ export default function ReportsPage() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <SummaryCard label={t('reports.revenue_card')} value={fmt(report.total)} />
+              <SummaryCard label={t('reports.revenue_card')} value={fmt(String(grandTotal))} />
               <div className="bg-white border rounded-lg px-4 py-3 space-y-0.5">
                 <p className="text-xs text-muted-foreground">{t('reports.sales_card')}</p>
                 <p className="text-xl font-semibold tabular-nums">{report.sale_count}</p>
               </div>
               <SummaryCard label={t('reports.tax_card')} value={fmt(String(parseFloat(report.gst_amount) + parseFloat(report.pst_amount)))} sub={t('reports.tax_subtitle')} />
-              <SummaryCard label={t('reports.avg_sale_card')} value={fmt(String(parseFloat(report.total) / report.sale_count))} />
+              <SummaryCard label={t('reports.avg_sale_card')} value={fmt(String(grandTotal / report.sale_count))} />
             </div>
 
             {/* Payroll % of net sales — primary KPI */}
@@ -177,7 +189,7 @@ export default function ReportsPage() {
               <Row label="Less on account sales" value={fmt(report.on_account_sales)} negative />
               <Row label="Plus on account payments" value={fmt(report.on_account_payments)} />
 
-              <Row label="Grand total" value={fmt(report.total)} bold />
+              <Row label="Grand total" value={fmt(String(grandTotal))} bold />
             </Section>
 
             {/* By provider */}
