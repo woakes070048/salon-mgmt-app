@@ -11,6 +11,7 @@ export interface RequestItem {
 export interface AppointmentRequest {
   id: string
   status: 'new' | 'reviewed' | 'converted' | 'declined'
+  source: 'email' | 'online_form' | 'phone' | 'walk_in' | 'staff_entered'
   desired_date: string
   desired_time_note: string | null
   special_note: string | null
@@ -21,7 +22,35 @@ export interface AppointmentRequest {
   email: string
   phone: string | null
   client_id: string | null
+  inbound_raw_body: string | null
   items: RequestItem[]
+}
+
+export interface StoredRecItem {
+  service_id: string
+  service_name: string
+  provider_id: string
+  provider_name: string
+  start_minutes: number
+  end_minutes: number
+  duration_minutes: number
+}
+
+export interface StoredRec {
+  items: StoredRecItem[]
+  score: number
+  rationale: string
+  requires_consent: boolean
+}
+
+export interface StoredRecommendations {
+  recommendations: StoredRec[]
+  created_at: string | null
+}
+
+export interface DraftReplyOut {
+  subject: string
+  body: string
 }
 
 export interface RequestItemIn {
@@ -87,4 +116,21 @@ export interface ConvertOut {
 
 export function convertRequest(id: string, body: ConvertRequestIn): Promise<ConvertOut> {
   return api.post<ConvertOut>(`/appointment-requests/${id}/convert`, body)
+}
+
+export function getRequestRecommendations(id: string): Promise<StoredRecommendations> {
+  return api.get<StoredRecommendations>(`/appointment-requests/${id}/recommendations`)
+}
+
+export function draftReply(id: string, chosenIndex: number): Promise<DraftReplyOut> {
+  return api.post<DraftReplyOut>(`/appointment-requests/${id}/draft-reply`, {
+    chosen_recommendation_index: chosenIndex,
+  })
+}
+
+export function sendReply(
+  id: string,
+  body: { subject: string; body: string; chosen_recommendation_index?: number },
+): Promise<void> {
+  return api.post<void>(`/appointment-requests/${id}/send-reply`, body)
 }

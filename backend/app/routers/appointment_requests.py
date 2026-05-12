@@ -65,6 +65,7 @@ class RequestItemOut(BaseModel):
 class AppointmentRequestOut(BaseModel):
     id: str
     status: str
+    source: str
     desired_date: str
     desired_time_note: str | None
     special_note: str | None
@@ -76,6 +77,7 @@ class AppointmentRequestOut(BaseModel):
     email: str
     phone: str | None
     client_id: str | None
+    inbound_raw_body: str | None = None
 
 
 class RequestReview(BaseModel):
@@ -95,8 +97,10 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
         )
     ).scalars().all()
 
-    client_id: str | None = None
-    if req.submitted_by_user_id:
+    # Prefer the direct client FK (set for email-sourced requests), then fall
+    # back to resolving via the guest user account (online form submissions).
+    client_id: str | None = str(req.client_id) if req.client_id else None
+    if not client_id and req.submitted_by_user_id:
         linked_client = (
             await db.execute(
                 select(Client).where(
@@ -135,6 +139,7 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
     return AppointmentRequestOut(
         id=str(req.id),
         status=req.status.value,
+        source=req.source.value,
         desired_date=req.desired_date.strftime("%Y-%m-%d"),
         desired_time_note=req.desired_time_note,
         special_note=req.special_note,
@@ -145,6 +150,7 @@ async def _load_request_out(req: AppointmentRequest, db: AsyncSession) -> Appoin
         email=req.email,
         phone=req.phone or None,
         client_id=client_id,
+        inbound_raw_body=req.inbound_raw_body,
         items=[
             RequestItemOut(
                 id=str(i.id),
@@ -456,6 +462,51 @@ async def convert_request(
     return ConvertOut(
         appointment_id=str(appt.id),
         appointment_date=body.appointment_date,
+    )
+
+
+# ── Stored recommendations ────────────────────────────────────────────────────
+
+
+class RecommendationLogOut(BaseModel):
+    recommendations: list[dict]
+    created_at: str | None
+
+
+@router.get("/{request_id}/recommendations", response_model=RecommendationLogOut)
+async def get_request_recommendations(
+    request_id: str,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RecommendationLogOut:
+    req = (
+        await db.execute(
+            select(AppointmentRequest).where(
+                AppointmentRequest.id == uuid.UUID(request_id),
+                AppointmentRequest.tenant_id == current_user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    log_row = (
+        await db.execute(
+            select(RecommendationLog)
+            .where(
+                RecommendationLog.tenant_id == current_user.tenant_id,
+                RecommendationLog.request_id == req.id,
+            )
+            .order_by(RecommendationLog.created_at.desc())
+        )
+    ).scalar_one_or_none()
+
+    if log_row is None:
+        return RecommendationLogOut(recommendations=[], created_at=None)
+
+    return RecommendationLogOut(
+        recommendations=log_row.recommendations_json.get("recommendations", []),
+        created_at=log_row.created_at.isoformat(),
     )
 
 
