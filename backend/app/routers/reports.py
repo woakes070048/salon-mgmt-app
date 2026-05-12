@@ -116,6 +116,11 @@ async def monthly_report(
         (SaleItem.quantity < 0, -func.abs(SaleItem.unit_price * SaleItem.quantity)),
         else_=SaleItem.unit_price * SaleItem.quantity,
     )
+    _is_gift_card = or_(
+        func.lower(SaleItem.description).contains("gift card"),
+        func.lower(SaleItem.description).contains("gift certificate"),
+        func.lower(SaleItem.description).contains("gift card/certificate"),
+    )
     kind_rows = (
         await db.execute(
             select(
@@ -125,7 +130,7 @@ async def monthly_report(
                 func.coalesce(func.sum(SaleItem.discount_amount * SaleItem.quantity), 0),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .where(*completed)
+            .where(*completed, ~_is_gift_card)
             .group_by(SaleItem.kind)
         )
     ).all()
@@ -168,6 +173,7 @@ async def monthly_report(
                     *completed,
                     SaleItem.kind == SaleItemKind.retail,
                     SaleItem.quantity < 0,
+                    ~_is_gift_card,
                 )
             )
         ).scalar() or 0
