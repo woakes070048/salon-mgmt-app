@@ -278,6 +278,53 @@ Salons run their own promotions — "Senior Tuesday", "First-time colour", "Styl
 
 **Out of scope for v1:** stacking multiple promotions, customer-facing codes for guest entry, threshold-based promos ("$10 off any service over $100"), per-service eligibility filters.
 
+### P2-34 · Receipt printer + cash drawer on checkout · 🔴 Top Priority
+
+On checkout completion, SalonOS should print a physical receipt to a Star Micronics or Epson ESC/POS receipt printer (USB or network-connected) and, for cash sales, trigger a cash drawer open pulse.
+
+**Scope:**
+
+Backend:
+- `POST /sales/{id}/print` — fetches the sale, formats ESC/POS commands (header with salon name, itemised lines, totals, GST/PST, payment methods, footer with "Thank you" and salon address), returns raw bytes or posts directly to a local print queue.
+- Drawer open is a one-byte ESC/POS command (`ESC p 0 25 255`) appended to the print job — fire automatically on cash sales, allow manual trigger separately.
+- Local print agent: because Cloud Run can't reach USB, the cleanest arch is a lightweight Python sidecar (`print_agent.py`) running on the salon's Mac/PC that polls `GET /sales/pending-print` (or accepts a webhook) and writes ESC/POS bytes to the printer. Alternatively: browser-based printing via WebUSB / QZ Tray if the salon prefers no sidecar.
+
+Frontend:
+- "Print receipt" button on the sale summary panel (post-checkout). Triggers `POST /sales/{id}/print`.
+- For cash sales: auto-trigger the print + drawer on checkout success; show a toast confirmation.
+- Settings page: printer config — IP address (network printer), port, paper width (80mm / 58mm), enable/disable auto-print, enable/disable drawer.
+
+**Open questions to resolve before building:**
+- Which hardware does Salon Lyol have or want? (Star mC-Print3 is the most common salon POS printer; Epson TM-T88 is also common.)
+- Local agent (sidecar) vs browser WebUSB vs QZ Tray — depends on IT setup at the salon.
+- Network (TCP/IP) vs USB — network is simpler for Cloud Run because the agent can be thin.
+
+**Phase:** P2 (POS completeness — without a physical receipt the checkout flow is incomplete for cash transactions).
+
+### P2-35 · Extract client colour formulas and special notes from Milano · 🔴 Top Priority
+
+The existing Milano import (`POST /admin/import-legacy`) brings in client records, appointments, and receipts but skips colour formulas and per-client service notes stored in Milano's Client Details export. These are arguably the highest-value data for stylists — losing them on migration means stylists have to rebuild notes from memory.
+
+**What Milano exports:**
+- `Client Details.txt` includes free-text fields per client: formula notes, allergy/sensitivity flags, general notes, and preferred products. These are typically in fixed-width or delimited columns alongside the client's name and code.
+
+**What needs to change:**
+
+Backend (`legacy_import.py`):
+- Parse the formula / notes / allergy columns from `Client Details.txt` during import.
+- Write formula content to `ClientNote` rows (type `formula`, dated to the import date as a best-effort timestamp, linked to the client via `client_id`).
+- Write general notes to `ClientNote` rows (type `note`).
+- Write allergy/sensitivity text to `Client.allergy_notes` (or a new `Client.sensitivity_notes` column if the field doesn't exist yet) — check current schema first.
+- Idempotent: re-running the import should update existing formula/note rows rather than duplicate them (match on `client_id` + type + source `legacy_import`).
+
+Frontend:
+- No new UI required — the existing Client Card already displays `ClientNote` entries in the Notes tab. Verify the formula tab renders correctly after import.
+- Admin import page: show a row count for formulas/notes imported in the results summary.
+
+**Why this is top priority:** stylists depend on formula history. If it's missing at go-live, staff will distrust the system from day one. This is a one-shot data quality fix that's cheap now and expensive later (manual re-entry per client).
+
+**Depends on:** existing Milano import infrastructure (`legacy_import.py`, `DataImportPage.tsx`, `ClientNote` model).
+
 ### P2-11 · Pay for multiple appointments together (group checkout)
 
 Common case: a parent/guardian arrives with one or more children, each booked into separate appointments (different providers, different services, different times). The parent expects one transaction at the end, not three.
@@ -423,7 +470,7 @@ Admin-triggered reset:
 
 ---
 
-### P2-28 · Social / SSO login via Auth0
+### P2-28 · Social / SSO login via Auth0 · ✅ Committed
 
 Replace (or augment) the custom JWT auth with Auth0 so that staff and clients can sign in with Google or Apple without managing a separate password. Auth0's free tier covers 7,500 MAUs — enough for all tenants through early multi-tenant rollout.
 
