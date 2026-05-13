@@ -51,6 +51,7 @@ import PayrollDetailPage from '@/pages/PayrollDetailPage'
 import DataImportPage from '@/pages/DataImportPage'
 import LoginLogsPage from '@/pages/LoginLogsPage'
 import OAuthCallbackPage from '@/pages/OAuthCallbackPage'
+import InboxPage from '@/pages/InboxPage'
 
 function StaffShell() {
   const { user, loading } = useAuth()
@@ -95,6 +96,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/appointments" element={<AppointmentBookPage />} />
         <Route path="/requests" element={<RequestsPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
         <Route path="/staff" element={<StaffManagementPage />} />
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/clients/cleanup" element={<ClientCleanupPage />} />

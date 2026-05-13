@@ -7,7 +7,7 @@ import { useLanguage } from '@/store/language'
 import {
   Home, CalendarDays, Users, ClipboardList, Settings, LogOut,
   ShieldCheck, Scissors, Vault, ShoppingBag, DollarSign, UserCog, List,
-  ChevronRight, Receipt, Coins, Upload, ScrollText, User,
+  ChevronRight, Receipt, Coins, Upload, ScrollText, User, Mail,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -88,7 +88,8 @@ export default function AppShell() {
     queryFn: () => listAllRequests('new'),
     refetchInterval: 60_000,
   })
-  const pendingCount = pendingRequests.length
+  const pendingCount = pendingRequests.filter(r => r.source !== 'email').length
+  const inboxCount = pendingRequests.filter(r => r.source === 'email').length
 
   const { data: branding } = useQuery({
     queryKey: ['branding'],
@@ -125,6 +126,7 @@ export default function AppShell() {
     { to: '/appointments', icon: CalendarDays,  label: t('nav.appointment_book'), badge: 0 },
     { to: '/clients',      icon: Users,         label: t('nav.clients'),          badge: 0 },
     { to: '/requests',     icon: ClipboardList, label: t('nav.requests'),         badge: pendingCount },
+    { to: '/inbox',        icon: Mail,          label: 'Inbox',                   badge: inboxCount },
   ]
 
   // Mini calendar date — read from URL if on appointment book, else today
