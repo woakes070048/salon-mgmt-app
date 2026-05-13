@@ -206,7 +206,7 @@ export default function AppointmentDetail({ item, appointment, date, onClose }: 
     <>
     {!checkoutOpen && (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {client.first_name} {client.last_name}
