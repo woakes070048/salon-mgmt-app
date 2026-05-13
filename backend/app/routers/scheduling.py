@@ -21,6 +21,7 @@ from fastapi import Depends
 
 from app.database import get_db
 from app.deps import StaffUser
+from app.models.client import Client
 from app.models.scheduling import TenantStation
 from app.scheduling.engine import recommend
 from app.scheduling.types import EngineRequest
@@ -63,11 +64,19 @@ async def get_recommendations(
     earliest = hhmm_to_minutes(body.earliest_start) if body.earliest_start else 0
     latest = hhmm_to_minutes(body.latest_end) if body.latest_end else 23 * 60
 
+    # Use client's preferred_provider_id as fallback for any service that
+    # doesn't have an explicit preference set on the request.
+    client_preferred_provider_id: uuid.UUID | None = None
+    if body.client_id:
+        client = await db.get(Client, body.client_id)
+        if client:
+            client_preferred_provider_id = client.preferred_provider_id
+
     engine_request = EngineRequest(
         tenant_id=tenant_id,
         target_date=target_date,
         services=[
-            (svc.service_id, svc.preferred_provider_id)
+            (svc.service_id, svc.preferred_provider_id or client_preferred_provider_id)
             for svc in body.services
         ],
         earliest_start_minutes=earliest,
