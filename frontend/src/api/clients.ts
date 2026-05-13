@@ -17,7 +17,8 @@ export interface Client {
 }
 
 export function searchClients(q: string): Promise<Client[]> {
-  return api.get<Client[]>(`/clients?q=${encodeURIComponent(q)}&limit=20`)
+  const limit = q.trim() ? 100 : 20
+  return api.get<Client[]>(`/clients?q=${encodeURIComponent(q)}&limit=${limit}`)
 }
 
 export function getClient(id: string): Promise<Client> {
