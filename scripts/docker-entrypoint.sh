@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-alembic upgrade head
+alembic upgrade heads
 
 if [ "${RUN_SEED:-false}" = "true" ]; then
   echo "Running seed..."
