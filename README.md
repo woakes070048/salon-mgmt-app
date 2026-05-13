@@ -136,6 +136,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Sale summary on completed appointments with full payment breakdown and inline edit
 - Edit sale items (discount, business reimbursed flag) and payments on any completed sale — no same-day restriction for admins
 - **Sales admin page** (Finance → Sales) — searchable by date range and client name; click any row to expand the full sale detail and edit inline without navigating the appointment calendar
+- **Receipt printer** — prints physical ESC/POS receipts to an Epson TM-T88V via QZ Tray (local bridge between browser and LAN printer); receipt includes itemised services, taxes, client first name, and next appointment; cash drawer opens automatically on cash sales; email receipt sent via existing SMTP/Resend path
 
 ### Retail & Inventory
 - Retail product catalog (SKU, price, cost, tax flags) with full CRUD
@@ -191,6 +192,8 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - User management: add, edit role, deactivate, and hard-delete staff and guest accounts
 - Email settings: SMTP or Resend API, client communications address, accounting/payroll address
 - Payroll provider settings: provider name, email, client ID, signature, and email footer
+- **Printer settings** — receipt printer name, IP/port, paper width, cash drawer toggle, auto-print on cash checkout, receipt logo upload
+- **SSO** — Google and Apple social login via Auth0; staff can sign in without a password after the admin links their account
 - Login audit log (admin-only) — timestamp, IP, and outcome per login attempt
 - Legacy data import: idempotent bulk import from prior system (clients, historical appointments, sales, future bookings)
 
@@ -201,13 +204,15 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **1** | Appointment book · Client management · Guest booking · Staff schedules | ✅ Complete |
-| **2** | POS & checkout · Notifications · Sales reporting · Retail catalog · Inventory · Staff management · Payroll | ✅ Complete |
-| **3** | AI scheduling · Briefing Engine · Inbound email intake · Multi-tenancy hardening · Beta onboarding | 🔄 In progress |
+| **2** | POS & checkout · Notifications · Sales reporting · Retail catalog · Inventory · Staff management · Payroll · Receipt printer | 🔄 In progress (UAT) |
+| **3** | AI scheduling · Briefing Engine · Inbound email intake · Booking inbox · SSO · Multi-tenancy hardening · Beta onboarding | 🔄 In progress |
 | **4** | Provider mobile app (iOS + Android) — schedule, bookings, checkout, payment requests, estimates, schedule change requests · QuickBooks integration | Planned |
 | **5** | Voice AI receptionist · Advanced analytics · Client-facing briefings | Planned |
 | **6** | Retail ecommerce — public storefront, Stripe checkout, pickup + shipping, order management | Planned |
 
-**Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing; Social/SSO login.
+**Phase 2 remaining:** receipt printer UAT (P2-34); client colour formula extraction from Milano (P2-35).
+
+**Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing.
 
 **Payment processor reconciliation (cross-phase):** End-of-day settlement import and matching against SalonOS-recorded payments. Supports airgapped terminals (Clover/TD — CSV upload today, API sync once Clover migration is live) and integrated processors (Stripe for ecommerce). Merchant fee tracking feeds into a net-revenue view on the sales report.
 

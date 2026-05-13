@@ -278,7 +278,7 @@ Salons run their own promotions — "Senior Tuesday", "First-time colour", "Styl
 
 **Out of scope for v1:** stacking multiple promotions, customer-facing codes for guest entry, threshold-based promos ("$10 off any service over $100"), per-service eligibility filters.
 
-### P2-34 · Receipt printer + cash drawer on checkout · 🔵 In Progress
+### P2-34 · Receipt printer + cash drawer on checkout · ✅ Dev Complete
 
 On checkout completion, SalonOS should print a physical receipt to the salon's Epson TM-T88V and, for cash sales, trigger a cash drawer open pulse. Receipt can also be emailed as PDF — both options are independent and can be combined.
 
