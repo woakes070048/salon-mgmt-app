@@ -283,7 +283,7 @@ The frontend is a single-page app served from Nginx; all data flows through the 
 
 ## How This Is Built: Spec-Driven Development with Claude Code
 
-Every feature starts as a written specification — not a ticket, a *spec*: the data model, API contract, business rules, and UX behaviour are fully described in [`docs/backlog.md`](docs/backlog.md) and [`docs/specs/`](docs/specs/) before a line of code is written.
+Every feature starts as a written specification — not a ticket, a *spec*: the data model, API contract, business rules, and UX behaviour are fully described in [`docs/backlog.md`](docs/backlog.md) before a line of code is written.
 
 Architecture decisions are recorded as [ADRs](docs/adr/) — short documents capturing the context, decision, and trade-offs for each major choice (cloud target, web framework, database/ORM, frontend approach).
 
