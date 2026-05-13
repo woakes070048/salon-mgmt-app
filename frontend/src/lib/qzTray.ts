@@ -51,6 +51,7 @@ export interface ReceiptData {
   address: string | null
   phone: string | null
   booking_email: string | null
+  website: string | null
   receipt_logo_url: string | null
   client_first_name: string | null
   next_appointment: string | null
@@ -134,16 +135,22 @@ function buildCommands(d: ReceiptData): object[] {
     cmds.push(raw(pad(p.label, `$${parseFloat(p.amount).toFixed(2)}`) + '\n'))
   }
 
-  // Footer
-  cmds.push(raw('\n'))
-  if (d.client_first_name) {
+  // Client footer — only if there's a next appointment to show
+  if (d.client_first_name && d.next_appointment) {
+    cmds.push(raw('\n'))
     cmds.push(raw(`Hi ${d.client_first_name},\n`))
-  }
-  if (d.next_appointment) {
     cmds.push(raw(`Your next appointment:\n${d.next_appointment}\n`))
   }
+
+  // Salon contact footer
   cmds.push(raw('\n'))
+  cmds.push(raw(CENTER))
+  cmds.push(raw(d.salon_name + '\n'))
+  if (d.address) cmds.push(raw(d.address + '\n'))
+  if (d.phone) cmds.push(raw(d.phone + '\n'))
   if (d.booking_email) cmds.push(raw(d.booking_email + '\n'))
+  if (d.website) cmds.push(raw(d.website + '\n'))
+  cmds.push(raw(LEFT))
 
   // Feed and cut
   cmds.push(raw('\n\n\n'))

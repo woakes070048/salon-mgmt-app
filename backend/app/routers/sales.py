@@ -1056,6 +1056,7 @@ class ReceiptDataOut(BaseModel):
     address: str | None
     phone: str | None
     booking_email: str | None
+    website: str | None
     receipt_logo_url: str | None
     client_first_name: str | None
     next_appointment: str | None
@@ -1129,6 +1130,7 @@ async def get_receipt_data(
         address=address,
         phone=tenant.phone,
         booking_email=tenant.booking_email,
+        website=tenant.website,
         receipt_logo_url=printer_cfg.receipt_logo_url if printer_cfg else None,
         client_first_name=client.first_name if client else None,
         next_appointment=next_appt,

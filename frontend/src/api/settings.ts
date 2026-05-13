@@ -14,6 +14,7 @@ export interface ContactDetails {
   country: string | null
   phone: string | null
   hours_summary: string | null
+  website: string | null
 }
 
 export interface BrandingSettings extends ContactDetails {

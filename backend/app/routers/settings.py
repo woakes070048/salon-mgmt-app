@@ -25,7 +25,7 @@ VALID_TIME_FORMATS = {"12h", "24h"}
 
 CONTACT_FIELDS = (
     "address_line1", "address_line2", "city", "region",
-    "postal_code", "country", "phone", "hours_summary",
+    "postal_code", "country", "phone", "hours_summary", "website",
 )
 
 
@@ -45,6 +45,7 @@ class BrandingOut(BaseModel):
     country: str | None
     phone: str | None
     hours_summary: str | None
+    website: str | None
 
 
 class BrandingPatch(BaseModel):
@@ -62,6 +63,7 @@ class BrandingPatch(BaseModel):
     country: str | None = None
     phone: str | None = None
     hours_summary: str | None = None
+    website: str | None = None
 
 
 async def _get_tenant(tenant_id: uuid.UUID, db: AsyncSession) -> Tenant:
@@ -87,6 +89,7 @@ def _branding_out(tenant: Tenant) -> BrandingOut:
         country=tenant.country,
         phone=tenant.phone,
         hours_summary=tenant.hours_summary,
+        website=tenant.website,
     )
 
 
