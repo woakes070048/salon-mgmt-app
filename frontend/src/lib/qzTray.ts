@@ -12,6 +12,62 @@ declare global {
 const QZ_CDN = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.min.js'
 const CHAR_WIDTH = 42  // chars across 80mm thermal roll at default font
 
+// Certificate injected at build time — allows QZ Tray to auto-trust this site.
+const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIIECzCCAvOgAwIBAgIGAZ4hWtQUMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
+EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
+UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
+HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
+RGVtbyBDZXJ0MB4XDTI2MDUxMjEyNDEwMVoXDTQ2MDUxMjEyNDEwMVowgaIxCzAJ
+BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
+VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
+IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
+VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC3
+DM7h2yJcgeTuLvi3rwya7fjVCO+8jJBg1DSVsCF8LVz+ISp5xcCzKbG5mC/6b1HE
+ya/ls1SgFVTrx36/FxX4Op9bExlWdA+vlJDTx55l1kQQZYb6Rv+HaZU28XLBCTn/
+WCMNEpZHqBRAymBouumZkzTPvnwb+/HGhcWbjitOAWkABl6vUPSkvZQHYlO34TEx
+tUoKJX3t2FB4JvbITyJYRkE59ZRHrE9zFIiUufe7A3tJ82RBkE+jILhNG0uaDsXJ
+CKKAnhBu47+6CheLJukIGlcxXczvKQfn6A2ZfeTDxpH47oFfnyNytkQWrJQ396up
+jbWT9nJV2w4s/al3PDB9AgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
+VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBRdyJuaytjPjg6Bf7DyhBboiw4JHzANBgkq
+hkiG9w0BAQsFAAOCAQEAfTg1oRbzm27J8avTmd4H70Jp/ku6XcGzuSBrbG0ErG/o
+KohZ6x7mUX+IlWyquC4uRqrevl0rKkOH2t40VhPiEwr2ouEDfMiwb7hQwTHFR/XT
+JFbCf4FeP67Euu6mI1zHghsbBs/3z6YhcVMZGOdf2ht9gbTPr2mROC7D2F8XqmWN
+MhP/n0IeoagMk+NU/j0cSTyWRBuuITw1jdJnXl4n16qGN5xFzg62YNA60f8QAjxN
+asvxQWZ9OhkM+xO8dwIDFHmT7xgMh+elWELLPIDzH0ASt4znpmVyXoSkXvfkUfvO
+X/RyGE0H4Wa4CWeIpKk3oSwA9DbyMzs8IhQ+WQEUXA==
+-----END CERTIFICATE-----`
+
+// Private key injected from VITE_QZ_PRIVATE_KEY build arg (GitHub secret — never in repo).
+const QZ_PRIVATE_KEY: string = import.meta.env.VITE_QZ_PRIVATE_KEY ?? ''
+
+async function signData(toSign: string): Promise<string> {
+  const pemContents = QZ_PRIVATE_KEY
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s/g, '')
+  const binaryDer = atob(pemContents)
+  const binaryArray = new Uint8Array(binaryDer.length)
+  for (let i = 0; i < binaryDer.length; i++) binaryArray[i] = binaryDer.charCodeAt(i)
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    binaryArray.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-512' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    cryptoKey,
+    new TextEncoder().encode(toSign),
+  )
+  const bytes = new Uint8Array(signature)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 function loadScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.qz) { resolve(); return }
@@ -25,11 +81,22 @@ function loadScript(): Promise<void> {
 
 async function ensureConnected(): Promise<void> {
   await loadScript()
+
+  // Set up certificate and signing so QZ Tray trusts this site without prompting.
+  window.qz.security.setCertificatePromise((_resolve: (v: string) => void) => {
+    _resolve(QZ_CERTIFICATE)
+  })
+  window.qz.security.setSignatureAlgorithm('SHA512')
+  window.qz.security.setSignaturePromise((toSign: string) => {
+    return (resolve: (v: string) => void, reject: (e: unknown) => void) => {
+      signData(toSign).then(resolve).catch(reject)
+    }
+  })
+
   if (!window.qz.websocket.isActive()) {
     try {
       await window.qz.websocket.connect({ host: 'localhost', usingSecure: true })
     } catch {
-      // Fall back to non-secure (older QZ Tray installs)
       await window.qz.websocket.connect({ host: 'localhost', usingSecure: false })
     }
   }

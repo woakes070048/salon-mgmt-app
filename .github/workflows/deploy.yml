@@ -95,6 +95,7 @@ jobs:
         run: |
           docker build \
             --build-arg VITE_API_URL=${{ vars.API_URL }} \
+            --build-arg VITE_QZ_PRIVATE_KEY="${{ secrets.QZ_TRAY_PRIVATE_KEY }}" \
             -f frontend/Dockerfile \
             -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
             -t ${{ env.REGISTRY }}/salon-frontend:latest \

@@ -6,9 +6,11 @@ RUN npm ci
 
 COPY . .
 
-# VITE_API_URL is baked into the bundle at build time
+# Build-time env vars baked into the bundle
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_QZ_PRIVATE_KEY
+ENV VITE_QZ_PRIVATE_KEY=$VITE_QZ_PRIVATE_KEY
 
 RUN npx vite build
 
