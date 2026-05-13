@@ -114,10 +114,11 @@ jobs:
         if: steps.changes.outputs.api == 'true'
         env:
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          ASSETS_GCS_BUCKET: ${{ vars.ASSETS_GCS_BUCKET }}
         run: |
           ENV_FLAG="--update-env-vars RUN_SEED=false,RUN_IMPORT=false"
           if [ -n "$FRONTEND_URL" ]; then
-            ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,RUN_SEED=false,RUN_IMPORT=false"
+            ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,ASSETS_GCS_BUCKET=$ASSETS_GCS_BUCKET,RUN_SEED=false,RUN_IMPORT=false"
           fi
           gcloud run deploy salon-api \
             --image ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
