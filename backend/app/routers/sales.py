@@ -1014,7 +1014,7 @@ async def _next_appointment_str(
         .where(
             Appointment.client_id == client_id,
             Appointment.tenant_id == tenant_id,
-            Appointment.status.in_([AppointmentStatus.pending, AppointmentStatus.confirmed]),
+            Appointment.status.in_([AppointmentStatus.requested, AppointmentStatus.confirmed]),
             Appointment.appointment_date >= ddate.today(),
         )
         .order_by(Appointment.appointment_date.asc(), AppointmentItem.start_time.asc())
