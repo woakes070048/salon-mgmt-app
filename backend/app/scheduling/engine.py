@@ -86,9 +86,9 @@ async def recommend(
             and_(Provider.tenant_id == tenant_id, Provider.id.in_(provider_ids))
         )
     )
-    provider_names: dict[uuid.UUID, str] = {
-        p.id: p.display_name for p in prov_result.scalars().all()
-    }
+    all_providers = prov_result.scalars().all()
+    provider_names: dict[uuid.UUID, str] = {p.id: p.display_name for p in all_providers}
+    provider_types: dict[uuid.UUID, str] = {p.id: p.provider_type.value for p in all_providers}
 
     # Provider scheduled windows for consent checks: pid -> (start_min, end_min)
     provider_windows: dict[uuid.UUID, tuple[int, int]] = {}
@@ -123,9 +123,16 @@ async def recommend(
                 latest_end=latest,
             )
         )
-        # Sort candidates: preferred provider first, then by start time
+        # Sort candidates: preferred provider first (or specialist before dualist
+        # when no preference), then by start time.
         ppid = preferred_providers.get(sid)
-        candidates.sort(key=lambda c: (0 if c.provider_id == ppid else 1, c.start_minutes))
+        if ppid is not None:
+            candidates.sort(key=lambda c: (0 if c.provider_id == ppid else 1, c.start_minutes))
+        else:
+            candidates.sort(key=lambda c: (
+                0 if provider_types.get(c.provider_id) == "specialist" else 1,
+                c.start_minutes,
+            ))
         service_candidates.append(candidates)
 
     # ── DFS with branch-and-bound ──────────────────────────────────────────────

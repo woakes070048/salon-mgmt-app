@@ -13,7 +13,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
@@ -21,6 +21,7 @@ from fastapi import Depends
 
 from app.database import get_db
 from app.deps import StaffUser
+from app.models.appointment import Appointment, AppointmentItem
 from app.models.client import Client
 from app.models.scheduling import TenantStation
 from app.scheduling.engine import recommend
@@ -64,19 +65,63 @@ async def get_recommendations(
     earliest = hhmm_to_minutes(body.earliest_start) if body.earliest_start else 0
     latest = hhmm_to_minutes(body.latest_end) if body.latest_end else 23 * 60
 
-    # Use client's preferred_provider_id as fallback for any service that
-    # doesn't have an explicit preference set on the request.
-    client_preferred_provider_id: uuid.UUID | None = None
-    if body.client_id:
+    # Build per-service preferred provider map.
+    # Priority: (1) explicit per-service preference on the request,
+    #           (2) client's saved preferred_provider_id,
+    #           (3) most recent/frequent provider for that service from history.
+    # New clients with no history get no preference — the engine sorts
+    # specialists before dualists automatically.
+    service_preferences: dict[uuid.UUID, uuid.UUID | None] = {
+        svc.service_id: svc.preferred_provider_id for svc in body.services
+    }
+
+    if body.client_id and any(v is None for v in service_preferences.values()):
         client = await db.get(Client, body.client_id)
         if client:
-            client_preferred_provider_id = client.preferred_provider_id
+            # Level 2: client's saved global preference
+            global_pref = client.preferred_provider_id
+
+            # Level 3: per-service history (most frequent, recency as tiebreaker)
+            # Query all past appointment items for this client, grouped by service+provider
+            history_rows = (await db.execute(
+                select(
+                    AppointmentItem.service_id,
+                    AppointmentItem.provider_id,
+                    func.count().label("cnt"),
+                    func.max(Appointment.appointment_date).label("last_date"),
+                )
+                .join(Appointment, Appointment.id == AppointmentItem.appointment_id)
+                .where(
+                    Appointment.client_id == body.client_id,
+                    Appointment.tenant_id == tenant_id,
+                    AppointmentItem.provider_id.isnot(None),
+                )
+                .group_by(AppointmentItem.service_id, AppointmentItem.provider_id)
+                .order_by(
+                    AppointmentItem.service_id,
+                    desc("cnt"),
+                    desc("last_date"),
+                )
+            )).all()
+
+            # Build: service_id -> best historical provider_id
+            history_pref: dict[uuid.UUID, uuid.UUID] = {}
+            for row in history_rows:
+                if row.service_id not in history_pref:
+                    history_pref[row.service_id] = row.provider_id
+
+            for sid in list(service_preferences.keys()):
+                if service_preferences[sid] is None:
+                    service_preferences[sid] = (
+                        history_pref.get(sid)
+                        or global_pref
+                    )
 
     engine_request = EngineRequest(
         tenant_id=tenant_id,
         target_date=target_date,
         services=[
-            (svc.service_id, svc.preferred_provider_id or client_preferred_provider_id)
+            (svc.service_id, service_preferences.get(svc.service_id))
             for svc in body.services
         ],
         earliest_start_minutes=earliest,

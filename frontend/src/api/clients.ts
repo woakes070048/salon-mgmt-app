@@ -12,6 +12,8 @@ export interface Client {
   late_cancellation_count: number
   is_vip: boolean
   language_preference: string
+  preferred_provider_id: string | null
+  preferred_provider_name: string | null
 }
 
 export function searchClients(q: string): Promise<Client[]> {
@@ -38,6 +40,8 @@ export function updateClient(clientId: string, data: {
   email?: string | null
   cell_phone?: string | null
   language_preference?: string
+  preferred_provider_id?: string | null
+  clear_preferred_provider?: boolean
 }): Promise<Client> {
   return api.patch<Client>(`/clients/${clientId}`, data)
 }

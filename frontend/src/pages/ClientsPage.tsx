@@ -16,6 +16,7 @@ import {
   deleteClient,
 } from '@/api/clients'
 import { updateAppointmentStatus } from '@/api/appointments'
+import { listProviders } from '@/api/providers'
 import { useTimeFormat } from '@/lib/timeFormat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -331,7 +332,14 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
   const [editEmail, setEditEmail] = useState('')
   const [editPhone, setEditPhone] = useState('')
   const [editLangPref, setEditLangPref] = useState('en')
+  const [editPreferredProvider, setEditPreferredProvider] = useState<string>('')
   const [editError, setEditError] = useState<string | null>(null)
+
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: listProviders,
+    staleTime: Infinity,
+  })
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', clientId],
@@ -357,6 +365,9 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
       email: editEmail.trim() || null,
       cell_phone: editPhone.trim() || null,
       language_preference: editLangPref,
+      ...(editPreferredProvider
+        ? { preferred_provider_id: editPreferredProvider }
+        : { clear_preferred_provider: true }),
     }),
     onSuccess: updated => {
       qc.setQueryData(['client', clientId], updated)
@@ -374,6 +385,7 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
     setEditEmail(client.email ?? '')
     setEditPhone(client.cell_phone ?? '')
     setEditLangPref(client.language_preference ?? 'en')
+    setEditPreferredProvider(client.preferred_provider_id ?? '')
     setEditError(null)
     setEditingProfile(true)
   }
@@ -437,6 +449,19 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
                 <option value="fr">{t('translations.lang_fr')}</option>
               </select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Preferred provider</Label>
+              <select
+                value={editPreferredProvider}
+                onChange={e => setEditPreferredProvider(e.target.value)}
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+              >
+                <option value="">— None —</option>
+                {providers.map(p => (
+                  <option key={p.id} value={p.id}>{p.display_name}</option>
+                ))}
+              </select>
+            </div>
             {editError && <p className="text-xs text-destructive">{editError}</p>}
             <div className="flex gap-2">
               <Button size="sm" onClick={() => saveProfile()} disabled={savingProfile || !editFirst.trim() || !editLast.trim()}>
@@ -469,6 +494,11 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
                 {client.email && <span>{client.email}</span>}
                 {!client.cell_phone && !client.email && <span>{t('clients.no_contact')}</span>}
               </div>
+              {client.preferred_provider_name && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Prefers <span className="font-medium text-foreground">{client.preferred_provider_name}</span>
+                </div>
+              )}
             </div>
             <div className="flex items-start gap-4 flex-shrink-0">
               <div className="flex gap-3 text-xs text-right">

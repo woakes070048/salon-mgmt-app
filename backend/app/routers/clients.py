@@ -32,11 +32,13 @@ class ClientOut(BaseModel):
     late_cancellation_count: int
     is_vip: bool
     language_preference: str
+    preferred_provider_id: str | None
+    preferred_provider_name: str | None
 
     model_config = {"from_attributes": True}
 
 
-def _client_out(c: Client) -> "ClientOut":
+def _client_out(c: Client, provider_name: str | None = None) -> "ClientOut":
     return ClientOut(
         id=str(c.id),
         first_name=c.first_name,
@@ -49,6 +51,8 @@ def _client_out(c: Client) -> "ClientOut":
         late_cancellation_count=c.late_cancellation_count,
         is_vip=c.is_vip,
         language_preference=c.language_preference,
+        preferred_provider_id=str(c.preferred_provider_id) if c.preferred_provider_id else None,
+        preferred_provider_name=provider_name,
     )
 
 
@@ -79,7 +83,14 @@ async def search_clients(
         )
     stmt = stmt.order_by(Client.last_name, Client.first_name).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
-    return [_client_out(c) for c in rows]
+    prov_ids = {c.preferred_provider_id for c in rows if c.preferred_provider_id}
+    prov_names: dict[uuid.UUID, str] = {}
+    if prov_ids:
+        prov_rows = (await db.execute(
+            select(Provider.id, Provider.display_name).where(Provider.id.in_(prov_ids))
+        )).all()
+        prov_names = {r.id: r.display_name for r in prov_rows}
+    return [_client_out(c, prov_names.get(c.preferred_provider_id)) for c in rows]
 
 
 @router.get("/check-duplicates", response_model=list[ClientOut])
@@ -287,6 +298,8 @@ class ClientUpdate(BaseModel):
     email: str | None = None
     cell_phone: str | None = None
     language_preference: str | None = None
+    preferred_provider_id: str | None = None
+    clear_preferred_provider: bool = False
 
 
 @router.patch("/{client_id}", response_model=ClientOut)
@@ -321,9 +334,25 @@ async def update_client(
                 detail=f"language_preference must be one of {SUPPORTED_LANGUAGES}",
             )
         row.language_preference = body.language_preference
+    if body.clear_preferred_provider:
+        row.preferred_provider_id = None
+    elif body.preferred_provider_id is not None:
+        prov = (await db.execute(
+            select(Provider).where(
+                Provider.id == uuid.UUID(body.preferred_provider_id),
+                Provider.tenant_id == current_user.tenant_id,
+            )
+        )).scalar_one_or_none()
+        if prov is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+        row.preferred_provider_id = prov.id
     await db.commit()
     await db.refresh(row)
-    return _client_out(row)
+    prov_name: str | None = None
+    if row.preferred_provider_id:
+        p = await db.get(Provider, row.preferred_provider_id)
+        prov_name = p.display_name if p else None
+    return _client_out(row, prov_name)
 
 
 class ClientNotesUpdate(BaseModel):
