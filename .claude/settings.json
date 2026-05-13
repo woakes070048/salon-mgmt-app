@@ -5,7 +5,25 @@
       "Bash(docker compose logs *)",
       "Bash(alembic current *)",
       "Bash(alembic heads *)",
-      "Bash(alembic history *)"
+      "Bash(alembic history *)",
+      "Bash(gcloud logging read *)",
+      "Bash(gcloud run services describe *)",
+      "Bash(gcloud run services list *)",
+      "Bash(gcloud run services logs *)",
+      "Bash(gcloud run revisions list *)",
+      "Bash(gcloud run jobs executions list *)",
+      "Bash(gcloud run jobs list *)",
+      "Bash(gcloud sql instances list *)",
+      "Bash(gcloud sql instances describe *)",
+      "Bash(gcloud compute instances list *)",
+      "Bash(gcloud secrets list *)",
+      "Bash(gcloud secrets versions list *)",
+      "Bash(gcloud auth list)",
+      "Bash(gcloud config get-value *)",
+      "Bash(gcloud config list *)",
+      "Bash(gcloud scheduler jobs list *)",
+      "Bash(gcloud scheduler jobs describe *)",
+      "Bash(gcloud projects get-iam-policy *)"
     ]
   }
 }

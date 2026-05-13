@@ -780,11 +780,11 @@ All references to the previous salon software have been removed:
 - ERM, reports annotations, CGI worked-examples doc cleaned
 - UI label updated to "Provider code"
 
-### P2-24 · Staff check-in / check-out · ✅ Complete
+### P2-36 · Staff check-in / check-out · ✅ Complete
 
 `StaffTimeEntry` model, `time_entries` router (`POST /time-entries`, `POST /time-entries/{id}/check-out`, `PATCH`, `DELETE`), dashboard clock widget, and `ManualTimeEntryDialog` for admin corrections. Payroll calculator uses summed `total_hours` when entries exist, falls back to scheduled hours otherwise.
 
-### P2-25 · Annual / flat salary pay type for owner
+### P2-37 · Annual / flat salary pay type for owner
 
 When onboarding a staff member (or owner), provide an "Annual salary" pay type option in addition to Hourly and Commission. Entering an annual amount lets the system divide by the number of pay cycles per year to compute the per-period gross — no hours or commission calculation required.
 
@@ -901,11 +901,53 @@ A slide-over panel triggered from any page that surfaces the relevant docs secti
 Foundation built alongside P3-2: `backend/briefing_engine/config.py` (`BriefingConfig` dataclass), `synthesizer.py` (Claude API call), `runner.py` (orchestrator), `delivery/file.py` (file channel), `app/routers/briefings.py` (`POST /run-briefing` endpoint), `scripts/run_briefing.py` (CLI trigger).
 
 **Remaining for P3-3 through P3-6:**
-- `sources/web_search.py` — Claude API with `web_search` tool
-- `sources/client_db.py` — client/appointment queries
-- `sources/analytics.py` — revenue and booking trend queries
-- `delivery/email.py`, `delivery/in_app.py` — additional channels
-- `templates/` — per-audience Jinja2 prompt templates
+
+`sources/web_search.py`
+- Uses Claude API with `web_search_20250305` tool type
+- Model: `claude-sonnet-4-6` (web search only available on Sonnet+)
+- Called for `market`, `competitors`, `ai_features`, `industry` topic domains
+- Returns a list of `SourceChunk(title, url, snippet, retrieved_at)` objects
+- Query strategy: one search per topic domain, results deduplicated by URL
+- Max results per query: 5; total context passed to synthesizer capped at ~4000 tokens
+
+`sources/client_db.py`
+- Called for `clients`, `appointments` topic domains
+- Queries for the target audience's scope:
+  - `stylist` audience: appointments for today + next 7 days for that provider, joined with client colour notes and last-visit data
+  - `salon_owner` audience: all providers' appointments for today, no-show/cancellation counts for the past 30 days
+  - `client` audience: that client's next appointment, loyalty point balance (future)
+- Returns structured Python dicts (not ORM objects) so they can be serialised into the Jinja2 context
+- Never returns PII for the wrong audience — enforces audience scoping at the query level
+
+`sources/analytics.py`
+- Called for `analytics` topic domain (salon owner audience primarily)
+- Queries:
+  - Revenue by week: rolling 8-week total and per-provider breakdown
+  - Booking fill rate: appointments booked / available slots per provider per week
+  - Retail vs service split as % of revenue (rolling 4 weeks)
+  - Top 5 services by revenue (rolling 4 weeks)
+- All queries use `completed_at` on `Sale` and `appointment_date` on `Appointment`
+- Returns summary statistics only — no raw PII
+
+`delivery/email.py`
+- Reuses `app.email.send_email` (SMTP or Resend path, whichever is configured for the tenant)
+- Wraps the synthesized markdown in a minimal HTML wrapper (no branded layout — briefings are internal/operational)
+- Subject line pattern: `"SalonOS Briefing — {audience} — {date}"`
+- `recipient_ids` maps to staff email addresses looked up from `User.email`
+
+`delivery/in_app.py`
+- Writes a `BriefingRecord` row (`tenant_id`, `audience`, `content_markdown`, `created_at`, `is_read`)
+- New table `briefing_records` — migration required
+- Frontend reads via `GET /briefings/latest?audience=stylist` (returns most recent unread, or most recent overall)
+- In-app rendering: markdown → HTML via the existing Tiptap display pattern
+
+`templates/`
+- One Jinja2 `.md.j2` file per audience (already listed in CLAUDE.md)
+- Variables available in all templates: `{{ date }}`, `{{ salon_name }}`, `{{ audience }}`
+- `stylist.md.j2` also receives: `{{ provider_name }}`, `{{ appointments }}` (list), `{{ colour_notes }}` (dict keyed by client_id)
+- `salon_owner.md.j2` also receives: `{{ revenue_summary }}`, `{{ booking_fill_rates }}`, `{{ top_services }}`
+- `developer.md.j2` and `claude_code.md.j2` receive: `{{ web_results }}` (list of SourceChunks)
+- Prompt templates follow the base synthesizer prompt in CLAUDE.md
 
 ---
 
@@ -1281,6 +1323,17 @@ Staff enters the totals from the terminal's paper batch printout. SalonOS compar
 
 **History:** last 30 days of entries shown below the form (same pattern as the cash till history).
 
+**API:**
+- `POST /processor-reconciliation` — create or replace the entry for `(processor_account_id, entry_date)`. Idempotent: re-submitting the same date/processor replaces the previous entry and its lines atomically (delete old lines, insert new). Returns the full entry with computed variances.
+- `GET /processor-reconciliation?processor_account_id={id}&date_from={d}&date_to={d}` — list entries for the history view and PROC-3 report.
+- `GET /processor-reconciliation/summary?date={d}` — returns SalonOS totals per payment method for the given date, pre-computed from `Sale` + `Payment` records. Used to populate the "SalonOS total" column before staff enters terminal figures.
+
+**Business rules:**
+- `salonos_amount` on each line = sum of `Payment.amount` for that `payment_method_id` across all sales with `completed_at` on `entry_date` (using the tenant's local timezone).
+- `variance` = `terminal_amount − salonos_amount`. Positive means the terminal shows more than SalonOS; negative means SalonOS shows more than the terminal.
+- Only payment methods mapped to the selected processor (via `ProcessorPaymentMethodMap`) appear as lines.
+- Cash is never a processor line — cash reconciliation is handled by P2-8 (`CashReconciliation`).
+
 ---
 
 ### PROC-3 · Reconciliation report and net revenue
@@ -1300,6 +1353,10 @@ Unified view of card settlement vs. SalonOS totals, and merchant fee impact on r
   - **Net revenue after fees**
 - Payroll % shown against both gross and net: `Payroll % of Gross Sales` and `Payroll % of Net Revenue`
 - If no batch entry exists for a period: "No settlement on file — enter terminal totals to see net revenue"
+
+**API:**
+- `GET /reports/processor-reconciliation?date_from={d}&date_to={d}` — returns per-processor summary: `{ processor_label, gross_salonos, gross_terminal, variance, total_fees, net }` for each active processor account, plus a grand total row. Variance and net are null if no batch entry exists for a day.
+- CSV export: same shape, streamed as `text/csv`.
 
 ---
 
@@ -1389,7 +1446,7 @@ Provider creates a new appointment or requests a change to an existing one from 
 - Clock in: `POST /time-entries`; clock out: `POST /time-entries/{id}/check-out`
 - Admin corrections and history remain desktop-only
 
-**Depends on:** P2-24 (complete).
+**Depends on:** P2-36 (complete).
 
 ---
 
@@ -1766,6 +1823,31 @@ Logged-in clients can see past online orders.
 - Create a `service_fee_history` table: `service_id`, `effective_from`, `product_fee`, `is_cost_percent`, `created_by_user_id`, `created_at`. Populated by a trigger or application-side hook whenever `services.product_fee` or `services.is_cost_percent` changes.
 - Update `_calc_payroll_line` to join against `service_fee_history` using the fee row where `effective_from <= period_end` (most recent per service). Falls back to current value if no history row exists.
 - Services page: show fee change history per service (last 5 changes with dates).
+
+**Migration strategy:**
+- The migration adds `effective_from date NOT NULL DEFAULT CURRENT_DATE` to `services`.
+- It also creates `service_fee_history` and seeds one row per service from the current `product_fee` + `is_cost_percent` values, with `effective_from = '2000-01-01'` (sentinel meaning "always applied before any explicit change"). This ensures existing payroll queries immediately return a result and never fall back to nothing.
+- No backfill of true historical changes is needed — the workaround (manual sale item edit) has already corrected the specific discrepancies found during the parallel run.
+
+**API:**
+- `GET /services/{id}/fee-history` — returns last 10 fee rows ordered by `effective_from DESC`: `{ effective_from, product_fee, is_cost_percent, changed_by }`.
+- Fee history is written automatically server-side on `PATCH /services/{id}` whenever `product_fee` or `is_cost_percent` changes — no separate endpoint needed.
+
+**Payroll calculator change:**
+```python
+# In _calc_payroll_line, replace direct service.product_fee access with:
+fee_row = (
+    session.execute(
+        select(ServiceFeeHistory)
+        .where(ServiceFeeHistory.service_id == service_id)
+        .where(ServiceFeeHistory.effective_from <= period_end)
+        .order_by(ServiceFeeHistory.effective_from.desc())
+        .limit(1)
+    )
+).scalar_one_or_none()
+product_fee = fee_row.product_fee if fee_row else service.product_fee
+is_cost_percent = fee_row.is_cost_percent if fee_row else service.is_cost_percent
+```
 
 **Workaround until built:** Manually zero the product fee on the affected sale item via the Sales edit UI. The sale audit log records the change.
 
