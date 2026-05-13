@@ -2,14 +2,17 @@ import uuid
 from datetime import time as dtime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status as http_status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import status as http_status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.deps import AdminUser, StaffUser
 from app.i18n import SUPPORTED_LANGUAGES
+from app.models.printer import TenantPrinterConfig
 from app.models.schedule import TenantOperatingHours
 from app.models.tenant import Tenant
 
@@ -325,3 +328,114 @@ async def update_request_notifications(
         reminder_lead_hours=tenant.reminder_lead_hours,
         reminder_send_time=tenant.reminder_send_time,
     )
+
+
+# ── Printer config ────────────────────────────────────────────────────────────
+
+
+class PrinterConfigOut(BaseModel):
+    printer_name: str
+    printer_host: str | None
+    printer_port: int
+    paper_width: int
+    auto_print_on_cash: bool
+    cash_drawer_enabled: bool
+    receipt_logo_url: str | None
+
+
+class PrinterConfigPatch(BaseModel):
+    printer_name: str | None = None
+    printer_host: str | None = None
+    printer_port: int | None = None
+    paper_width: int | None = None
+    auto_print_on_cash: bool | None = None
+    cash_drawer_enabled: bool | None = None
+
+
+async def _get_or_create_printer_cfg(tenant_id: uuid.UUID, db: AsyncSession) -> TenantPrinterConfig:
+    cfg = (
+        await db.execute(select(TenantPrinterConfig).where(TenantPrinterConfig.tenant_id == tenant_id))
+    ).scalar_one_or_none()
+    if cfg is None:
+        cfg = TenantPrinterConfig(tenant_id=tenant_id)
+        db.add(cfg)
+        await db.flush()
+    return cfg
+
+
+def _printer_out(cfg: TenantPrinterConfig) -> PrinterConfigOut:
+    return PrinterConfigOut(
+        printer_name=cfg.printer_name,
+        printer_host=cfg.printer_host,
+        printer_port=cfg.printer_port,
+        paper_width=cfg.paper_width,
+        auto_print_on_cash=cfg.auto_print_on_cash,
+        cash_drawer_enabled=cfg.cash_drawer_enabled,
+        receipt_logo_url=cfg.receipt_logo_url,
+    )
+
+
+@router.get("/printer", response_model=PrinterConfigOut)
+async def get_printer_config(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PrinterConfigOut:
+    cfg = await _get_or_create_printer_cfg(current_user.tenant_id, db)
+    await db.commit()
+    return _printer_out(cfg)
+
+
+@router.patch("/printer", response_model=PrinterConfigOut)
+async def update_printer_config(
+    body: PrinterConfigPatch,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PrinterConfigOut:
+    cfg = await _get_or_create_printer_cfg(current_user.tenant_id, db)
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        if field == "printer_port" and value is not None and not (1 <= value <= 65535):
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="printer_port must be 1–65535")
+        if field == "paper_width" and value is not None and value not in (58, 80):
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="paper_width must be 58 or 80")
+        setattr(cfg, field, value)
+    await db.commit()
+    await db.refresh(cfg)
+    return _printer_out(cfg)
+
+
+@router.post("/printer/logo", response_model=PrinterConfigOut)
+async def upload_printer_logo(
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    file: UploadFile = File(...),
+) -> PrinterConfigOut:
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="File must be an image")
+    if not settings.assets_gcs_bucket:
+        raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Asset storage not configured (ASSETS_GCS_BUCKET)")
+
+    import io
+
+    from google.cloud import storage as gcs
+
+    data = await file.read()
+    ext = (file.filename or "logo.png").rsplit(".", 1)[-1].lower()
+    blob_name = f"tenants/{current_user.tenant_id}/receipt_logo.{ext}"
+
+    client = gcs.Client()
+    bucket = client.bucket(settings.assets_gcs_bucket)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_file(io.BytesIO(data), content_type=file.content_type)
+    blob.make_public()
+    logo_url = blob.public_url
+
+    cfg = await _get_or_create_printer_cfg(current_user.tenant_id, db)
+    cfg.receipt_logo_url = logo_url
+    await db.commit()
+    await db.refresh(cfg)
+    return _printer_out(cfg)

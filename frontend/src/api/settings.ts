@@ -80,3 +80,27 @@ export function updateRequestNotifications(
 ): Promise<RequestNotifications> {
   return api.patch<RequestNotifications>('/settings/notifications', patch)
 }
+
+export interface PrinterConfig {
+  printer_name: string
+  printer_host: string | null
+  printer_port: number
+  paper_width: number
+  auto_print_on_cash: boolean
+  cash_drawer_enabled: boolean
+  receipt_logo_url: string | null
+}
+
+export function getPrinterConfig(): Promise<PrinterConfig> {
+  return api.get<PrinterConfig>('/settings/printer')
+}
+
+export function updatePrinterConfig(patch: Partial<Omit<PrinterConfig, 'receipt_logo_url'>>): Promise<PrinterConfig> {
+  return api.patch<PrinterConfig>('/settings/printer', patch)
+}
+
+export function uploadPrinterLogo(file: File): Promise<PrinterConfig> {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.postForm<PrinterConfig>('/settings/printer/logo', fd)
+}

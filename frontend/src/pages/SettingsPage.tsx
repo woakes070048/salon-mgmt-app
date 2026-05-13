@@ -15,6 +15,10 @@ import {
   type OperatingHoursDay,
   getRequestNotifications,
   updateRequestNotifications,
+  getPrinterConfig,
+  updatePrinterConfig,
+  uploadPrinterLogo,
+  type PrinterConfig,
 } from '@/api/settings'
 import { getEmailConfig, saveEmailConfig, testEmailConfig, getPayrollConfig, savePayrollConfig } from '@/api/admin'
 import { changePassword } from '@/api/auth'
@@ -95,7 +99,7 @@ export default function SettingsPage() {
     },
   })
 
-  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll' | 'account'>('branding')
+  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll' | 'printer' | 'account'>('branding')
 
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
 
@@ -106,6 +110,7 @@ export default function SettingsPage() {
     ...(isAdmin ? [{ id: 'promotions', label: t('settings.tab_promotions') }] : []),
     ...(isAdmin ? [{ id: 'email', label: t('settings.tab_email') }] : []),
     ...(isAdmin ? [{ id: 'payroll', label: t('settings.tab_payroll') }] : []),
+    ...(isAdmin ? [{ id: 'printer', label: 'Printer' }] : []),
     { id: 'account', label: t('settings.tab_account') },
   ] as const
 
@@ -379,6 +384,8 @@ export default function SettingsPage() {
         {tab === 'payroll' && isAdmin && <PayrollSection />}
 
         {/* Account tab — all users */}
+        {tab === 'printer' && isAdmin && <PrinterSection />}
+
         {tab === 'account' && <ChangePasswordSection />}
       </div>
     </div>
@@ -1375,6 +1382,154 @@ function PayrollSection() {
           {mutation.isPending ? t('common.saving') : t('common.save')}
         </Button>
         {pSaved && <span className="text-sm text-green-600">{t('settings.status_saved')}</span>}
+      </div>
+    </section>
+  )
+}
+
+function PrinterSection() {
+  const qc = useQueryClient()
+  const { data: cfg, isLoading } = useQuery({
+    queryKey: ['printer-config'],
+    queryFn: getPrinterConfig,
+  })
+
+  const [printerName, setPrinterName] = useState('')
+  const [printerHost, setPrinterHost] = useState('')
+  const [printerPort, setPrinterPort] = useState(9100)
+  const [paperWidth, setPaperWidth] = useState<58 | 80>(80)
+  const [autoprint, setAutoprint] = useState(false)
+  const [cashDrawer, setCashDrawer] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (cfg) {
+      setPrinterName(cfg.printer_name)
+      setPrinterHost(cfg.printer_host ?? '')
+      setPrinterPort(cfg.printer_port)
+      setPaperWidth(cfg.paper_width as 58 | 80)
+      setAutoprint(cfg.auto_print_on_cash)
+      setCashDrawer(cfg.cash_drawer_enabled)
+    }
+  }, [cfg])
+
+  const saveMutation = useMutation({
+    mutationFn: () => updatePrinterConfig({
+      printer_name: printerName.trim() || undefined,
+      printer_host: printerHost.trim() || undefined,
+      printer_port: printerPort,
+      paper_width: paperWidth,
+      auto_print_on_cash: autoprint,
+      cash_drawer_enabled: cashDrawer,
+    }),
+    onSuccess: (updated: PrinterConfig) => {
+      qc.setQueryData(['printer-config'], updated)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    },
+  })
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoUploading(true)
+    setLogoError(null)
+    try {
+      const updated = await uploadPrinterLogo(file)
+      qc.setQueryData(['printer-config'], updated)
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setLogoUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+
+  return (
+    <section className="border rounded-lg p-5 space-y-5 bg-white">
+      <div>
+        <h2 className="text-sm font-semibold">Receipt Printer</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Epson TM-T88V via QZ Tray. QZ Tray must be installed and running on the salon PC.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="prt-name">Printer name</Label>
+        <Input id="prt-name" value={printerName} onChange={e => setPrinterName(e.target.value)}
+          placeholder="EPSON TM-T88V Receipt" />
+        <p className="text-xs text-muted-foreground">Must match the printer name in QZ Tray exactly.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="prt-host">Printer IP address</Label>
+          <Input id="prt-host" value={printerHost} onChange={e => setPrinterHost(e.target.value)}
+            placeholder="192.168.1.x" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="prt-port">Port</Label>
+          <Input id="prt-port" type="number" value={printerPort}
+            onChange={e => setPrinterPort(parseInt(e.target.value) || 9100)} />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Paper width</Label>
+        <div className="flex gap-3">
+          {([80, 58] as const).map(w => (
+            <label key={w} className="flex items-center gap-1.5 cursor-pointer text-sm">
+              <input type="radio" name="paper-width" checked={paperWidth === w}
+                onChange={() => setPaperWidth(w)} />
+              {w}mm
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="checkbox" checked={cashDrawer} onChange={e => setCashDrawer(e.target.checked)}
+            className="h-4 w-4 rounded" />
+          Cash drawer connected
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="checkbox" checked={autoprint} onChange={e => setAutoprint(e.target.checked)}
+            className="h-4 w-4 rounded" disabled={!cashDrawer} />
+          Auto-print + open drawer on cash checkout
+        </label>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Receipt logo</Label>
+        {cfg?.receipt_logo_url && (
+          <img src={cfg.receipt_logo_url} alt="Receipt logo" className="h-12 object-contain border rounded p-1 bg-white" />
+        )}
+        <div className="flex items-center gap-3">
+          <label className="cursor-pointer text-xs border rounded px-3 py-1.5 hover:bg-muted">
+            {logoUploading ? 'Uploading…' : cfg?.receipt_logo_url ? 'Replace logo' : 'Upload logo'}
+            <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={logoUploading} />
+          </label>
+          {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+        </div>
+        <p className="text-xs text-muted-foreground">PNG or JPEG, black on white, max ~500×150px for best results.</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Save className="h-3.5 w-3.5 mr-1.5" />
+          {saveMutation.isPending ? 'Saving…' : 'Save printer settings'}
+        </Button>
+        {saved && <span className="text-sm text-green-600">Saved</span>}
+        {saveMutation.isError && (
+          <span className="text-sm text-destructive">
+            {saveMutation.error instanceof Error ? saveMutation.error.message : 'Save failed'}
+          </span>
+        )}
       </div>
     </section>
   )

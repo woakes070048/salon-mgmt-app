@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Leave empty in development to skip signature validation.
     resend_webhook_secret: str = ""
 
+    # GCS bucket for tenant assets (receipt logos etc.)
+    assets_gcs_bucket: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

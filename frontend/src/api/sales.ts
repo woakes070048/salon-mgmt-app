@@ -119,3 +119,41 @@ export function editSalePayments(
 ): Promise<Sale> {
   return api.patch<Sale>(`/sales/${saleId}/payments`, { payments })
 }
+
+export interface ReceiptItem {
+  description: string
+  quantity: number
+  line_total: string
+}
+
+export interface ReceiptPayment {
+  label: string
+  amount: string
+  is_cash: boolean
+}
+
+export interface ReceiptData {
+  sale_id: string
+  completed_at: string
+  salon_name: string
+  address: string | null
+  phone: string | null
+  booking_email: string | null
+  receipt_logo_url: string | null
+  client_first_name: string | null
+  next_appointment: string | null
+  items: ReceiptItem[]
+  subtotal: string
+  gst_amount: string
+  pst_amount: string
+  total: string
+  payments: ReceiptPayment[]
+  printer_name: string
+  cash_drawer_enabled: boolean
+  auto_print_on_cash: boolean
+  has_cash_payment: boolean
+}
+
+export function getReceiptData(saleId: string): Promise<ReceiptData> {
+  return api.get<ReceiptData>(`/sales/${saleId}/receipt-data`)
+}

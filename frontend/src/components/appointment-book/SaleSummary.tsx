@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSaleByAppointment, getSaleById, editSalePayments, patchSaleItem, type SaleItem } from '@/api/sales'
+import { getSaleByAppointment, getSaleById, editSalePayments, patchSaleItem, getReceiptData, type SaleItem } from '@/api/sales'
+import { sendReceipt } from '@/api/sales'
 import { listPaymentMethods } from '@/api/paymentMethods'
 import { Button } from '@/components/ui/button'
+import { printReceipt } from '@/lib/qzTray'
 
 interface Props {
   appointmentId?: string
@@ -197,6 +199,13 @@ export default function SaleSummary({ appointmentId, saleId, isAdmin = false }: 
   })
   const [editing, setEditing] = useState(false)
   const [editingItem, setEditingItem] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const [printError, setPrintError] = useState<string | null>(null)
+  const [emailTo, setEmailTo] = useState('')
+  const [showEmailInput, setShowEmailInput] = useState(false)
+  const [emailing, setEmailing] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(false)
   const qc = useQueryClient()
 
   const patchItemMutation = useMutation({
@@ -207,6 +216,37 @@ export default function SaleSummary({ appointmentId, saleId, isAdmin = false }: 
       setEditingItem(null)
     },
   })
+
+  async function handlePrint() {
+    if (!sale) return
+    setPrinting(true)
+    setPrintError(null)
+    try {
+      const data = await getReceiptData(sale.id)
+      await printReceipt(data)
+    } catch (e) {
+      setPrintError(e instanceof Error ? e.message : 'Print failed')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  async function handleEmail() {
+    if (!sale || !emailTo.trim()) return
+    setEmailing(true)
+    setEmailError(null)
+    setEmailSent(false)
+    try {
+      await sendReceipt(sale.id, emailTo.trim())
+      setEmailSent(true)
+      setShowEmailInput(false)
+      setEmailTo('')
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : 'Email failed')
+    } finally {
+      setEmailing(false)
+    }
+  }
 
   if (isLoading) {
     return <p className="text-xs text-muted-foreground text-center pt-2">{t('common.loading')}</p>
@@ -325,6 +365,49 @@ export default function SaleSummary({ appointmentId, saleId, isAdmin = false }: 
           onDone={() => setEditing(false)}
         />
       )}
+
+      {/* Receipt actions */}
+      <div className="pt-2 mt-1 border-t space-y-1.5">
+        <div className="flex gap-2">
+          <button
+            onClick={handlePrint}
+            disabled={printing}
+            className="text-xs border rounded px-2.5 py-1 hover:bg-muted disabled:opacity-50"
+          >
+            {printing ? 'Printing…' : 'Print receipt'}
+          </button>
+          <button
+            onClick={() => { setShowEmailInput(v => !v); setEmailSent(false); setEmailError(null) }}
+            className="text-xs border rounded px-2.5 py-1 hover:bg-muted"
+          >
+            Email receipt
+          </button>
+        </div>
+
+        {printError && <p className="text-[10px] text-destructive">{printError}</p>}
+        {emailSent && <p className="text-[10px] text-green-600">Receipt sent.</p>}
+
+        {showEmailInput && (
+          <div className="flex gap-1.5 items-center">
+            <input
+              type="email"
+              value={emailTo}
+              onChange={e => setEmailTo(e.target.value)}
+              placeholder="client@email.com"
+              className="flex-1 border rounded px-2 py-1 text-xs bg-background"
+              onKeyDown={e => e.key === 'Enter' && handleEmail()}
+            />
+            <button
+              onClick={handleEmail}
+              disabled={emailing || !emailTo.trim()}
+              className="text-xs bg-foreground text-background px-2.5 py-1 rounded disabled:opacity-50"
+            >
+              {emailing ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+        )}
+        {emailError && <p className="text-[10px] text-destructive">{emailError}</p>}
+      </div>
     </div>
   )
 }

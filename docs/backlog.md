@@ -278,28 +278,60 @@ Salons run their own promotions — "Senior Tuesday", "First-time colour", "Styl
 
 **Out of scope for v1:** stacking multiple promotions, customer-facing codes for guest entry, threshold-based promos ("$10 off any service over $100"), per-service eligibility filters.
 
-### P2-34 · Receipt printer + cash drawer on checkout · 🔴 Top Priority
+### P2-34 · Receipt printer + cash drawer on checkout · 🔵 In Progress
 
-On checkout completion, SalonOS should print a physical receipt to a Star Micronics or Epson ESC/POS receipt printer (USB or network-connected) and, for cash sales, trigger a cash drawer open pulse.
+On checkout completion, SalonOS should print a physical receipt to the salon's Epson TM-T88V and, for cash sales, trigger a cash drawer open pulse. Receipt can also be emailed as PDF — both options are independent and can be combined.
+
+**Hardware:** Epson TM-T88V (80mm thermal, ESC/POS). Has built-in Ethernet (10/100Base-T) — reachable on the salon's local network via TCP port 9100.
+
+**Architecture constraint:** SalonOS runs on GCP (Cloud Run). The printer and cash drawer are local to the machine running the browser. GCP cannot reach the printer directly. The print path must go: GCP backend → browser → local bridge → printer.
+
+**Receipt layout (matching Milano):**
+
+```
+[LYOL logo image]
+Salon Lyol
+1452 Yonge Street, Toronto, ON M4T 1Y5
+(416) 922-0611
+
+{date}                    {time}
+--------------------------------
+Services                {total}
+Retail                  {total}
+G/C (gift card)         {total}
+SubTotal                {total}
+GST                     {total}
+PST                     {total}
+================================
+[payment method lines]
+
+Hi {client_first_name},
+Your next appointment: {next_appointment}
+
+accounting@salonlyol.ca
+www.salonlyol.ca
+```
 
 **Scope:**
 
 Backend:
-- `POST /sales/{id}/print` — fetches the sale, formats ESC/POS commands (header with salon name, itemised lines, totals, GST/PST, payment methods, footer with "Thank you" and salon address), returns raw bytes or posts directly to a local print queue.
-- Drawer open is a one-byte ESC/POS command (`ESC p 0 25 255`) appended to the print job — fire automatically on cash sales, allow manual trigger separately.
-- Local print agent: because Cloud Run can't reach USB, the cleanest arch is a lightweight Python sidecar (`print_agent.py`) running on the salon's Mac/PC that polls `GET /sales/pending-print` (or accepts a webhook) and writes ESC/POS bytes to the printer. Alternatively: browser-based printing via WebUSB / QZ Tray if the salon prefers no sidecar.
+- `POST /sales/{id}/print` — fetches sale + client + next upcoming appointment, formats ESC/POS commands per layout above (logo via GS v 0, text lines, totals, footer with client name + next appt), returns 200 on success.
+- `POST /sales/{id}/email-receipt` — renders the same layout as PDF and emails to the client's address on file.
+- Drawer open command (`ESC p 0 25 255`) appended to print job automatically for cash sales; also available as a standalone trigger.
+- Local bridge: **QZ Tray** (recommended) — Java app installed on the salon PC; browser connects via WebSocket to `wss://localhost:8181` and sends raw ESC/POS bytes; QZ Tray writes them to the printer over local TCP:9100. No polling lag, no background service to manage beyond QZ Tray itself. Alternative: lightweight Python sidecar that polls `GET /sales/pending-print` — simpler to build but adds polling lag and requires keeping a service running.
 
 Frontend:
-- "Print receipt" button on the sale summary panel (post-checkout). Triggers `POST /sales/{id}/print`.
-- For cash sales: auto-trigger the print + drawer on checkout success; show a toast confirmation.
-- Settings page: printer config — IP address (network printer), port, paper width (80mm / 58mm), enable/disable auto-print, enable/disable drawer.
+- Post-checkout sale summary panel: "Print receipt" button + "Email receipt" button (independent). Both can be triggered together.
+- Cash sales: auto-trigger print + drawer on checkout success; show toast.
+- Settings page: printer config — connection type (USB/network), IP + port for network, paper width (80mm), enable/disable auto-print, enable/disable cash drawer.
 
-**Open questions to resolve before building:**
-- Which hardware does Salon Lyol have or want? (Star mC-Print3 is the most common salon POS printer; Epson TM-T88 is also common.)
-- Local agent (sidecar) vs browser WebUSB vs QZ Tray — depends on IT setup at the salon.
-- Network (TCP/IP) vs USB — network is simpler for Cloud Run because the agent can be thin.
+**Logo:** uploaded via Settings (not hardcoded). Stored as a tenant asset; sent to printer via ESC/POS GS v 0 raster image command.
 
-**Phase:** P2 (POS completeness — without a physical receipt the checkout flow is incomplete for cash transactions).
+**Email receipt:** use existing transactional email path (SendGrid/SMTP). Render receipt as PDF, attach, send to client's email on file.
+
+**Local bridge: QZ Tray.** Java app installed once on the salon PC. Browser connects via WebSocket (`wss://localhost:8181`), sends raw ESC/POS; QZ Tray writes to printer over local TCP:9100. No open questions — ready to build.
+
+**Phase:** P2 (POS completeness — cash transactions require a physical receipt).
 
 ### P2-35 · Extract client colour formulas and special notes from Milano · 🔴 Top Priority
 

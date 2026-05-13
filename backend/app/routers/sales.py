@@ -9,7 +9,7 @@ See docs/specs/P2-1-checkout-payment.md for the rule list and acceptance tests.
 import json
 import uuid
 from datetime import date, datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,14 +21,22 @@ from app.database import get_db
 from app.deps import StaffUser
 from app.email import email_cfg_from_row, send_email
 from app.models.appointment import Appointment, AppointmentItem, AppointmentStatus
-from app.models.email_config import TenantEmailConfig
 from app.models.client import Client
+from app.models.email_config import TenantEmailConfig
 from app.models.payment_method import PaymentMethodKind, TenantPaymentMethod
+from app.models.printer import TenantPrinterConfig
 from app.models.promotion import TenantPromotion
-from app.models.retail import RetailItem
-from app.models.retail import RetailStockMovement, StockMovementKind
-from app.models.sale import Payment, Sale, SaleAppointment, SaleItem, SaleItemKind, SalePaymentEdit, SaleStatus
 from app.models.provider import Provider
+from app.models.retail import RetailItem, RetailStockMovement, StockMovementKind
+from app.models.sale import (
+    Payment,
+    Sale,
+    SaleAppointment,
+    SaleItem,
+    SaleItemKind,
+    SalePaymentEdit,
+    SaleStatus,
+)
 from app.models.service import Service, ServiceCategory
 from app.models.tenant import Tenant
 
@@ -749,6 +757,9 @@ async def send_receipt(
 
     smtp = email_cfg_from_row(cfg_row)
 
+    client = await db.get(Client, sale.client_id) if sale.client_id else None
+    next_appt = await _next_appointment_str(sale.client_id, tid, db) if sale.client_id else None
+
     items_html = "".join(
         f"<tr><td style='padding:4px 0;'>{it.description}</td>"
         f"<td style='padding:4px 0;text-align:right;'>${it.line_total}</td></tr>"
@@ -760,6 +771,12 @@ async def send_receipt(
         for p in payments if p.payment_method_id in methods_by_id
     )
     sale_date = sale.completed_at.strftime("%B %d, %Y") if sale.completed_at else ""
+
+    greeting = f"<p>Hi {client.first_name},</p>" if client else ""
+    next_appt_html = (
+        f"<p style='margin:16px 0;color:#555;'>Your next appointment:<br>"
+        f"<strong>{next_appt}</strong></p>"
+    ) if next_appt else ""
 
     html = f"""
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
@@ -782,6 +799,8 @@ async def send_receipt(
       <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
         {payments_html}
       </table>
+      {greeting}
+      {next_appt_html}
       <p style="color:#aaa;font-size:12px;">Thank you for visiting {tenant.name}.</p>
     </div>"""
 
@@ -979,3 +998,165 @@ async def patch_sale_item(
     )).scalars().all()]
 
     return _serialize(sale, appt_ids, list(items), list(payments), methods_by_id)
+
+
+# ── Helpers shared by receipt-data and send-receipt ──────────────────────────
+
+async def _next_appointment_str(
+    client_id: uuid.UUID, tenant_id: uuid.UUID, db: AsyncSession
+) -> str | None:
+    """Return 'Tuesday, May 20 at 2:00 PM' for the client's next upcoming appointment."""
+    from datetime import date as ddate
+    row = (await db.execute(
+        select(Appointment, AppointmentItem, Service)
+        .join(AppointmentItem, AppointmentItem.appointment_id == Appointment.id)
+        .join(Service, Service.id == AppointmentItem.service_id)
+        .where(
+            Appointment.client_id == client_id,
+            Appointment.tenant_id == tenant_id,
+            Appointment.status.in_([AppointmentStatus.pending, AppointmentStatus.confirmed]),
+            Appointment.appointment_date >= ddate.today(),
+        )
+        .order_by(Appointment.appointment_date.asc(), AppointmentItem.start_time.asc())
+        .limit(1)
+    )).first()
+    if not row:
+        return None
+    appt, ai, svc = row
+    appt_date = appt.appointment_date.strftime("%A, %B %-d")
+    start_dt = ai.start_time
+    if start_dt:
+        hour = start_dt.hour
+        minute = start_dt.minute
+        ampm = "AM" if hour < 12 else "PM"
+        h12 = hour % 12 or 12
+        time_str = f"{h12}:{minute:02d} {ampm}"
+        return f"{appt_date} at {time_str}"
+    return appt_date
+
+
+# ── GET /sales/{sale_id}/receipt-data ────────────────────────────────────────
+
+class ReceiptItemOut(BaseModel):
+    description: str
+    quantity: int
+    line_total: str
+
+
+class ReceiptPaymentOut(BaseModel):
+    label: str
+    amount: str
+    is_cash: bool
+
+
+class ReceiptDataOut(BaseModel):
+    sale_id: str
+    completed_at: str
+    salon_name: str
+    address: str | None
+    phone: str | None
+    booking_email: str | None
+    receipt_logo_url: str | None
+    client_first_name: str | None
+    next_appointment: str | None
+    items: list[ReceiptItemOut]
+    subtotal: str
+    gst_amount: str
+    pst_amount: str
+    total: str
+    payments: list[ReceiptPaymentOut]
+    printer_name: str
+    cash_drawer_enabled: bool
+    auto_print_on_cash: bool
+    has_cash_payment: bool
+
+
+@router.get("/{sale_id}/receipt-data", response_model=ReceiptDataOut)
+async def get_receipt_data(
+    sale_id: str,
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ReceiptDataOut:
+    tid = current_user.tenant_id
+
+    sale = (await db.execute(
+        select(Sale).where(Sale.id == uuid.UUID(sale_id), Sale.tenant_id == tid,
+                           Sale.status == SaleStatus.completed)
+    )).scalar_one_or_none()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    items = (await db.execute(
+        select(SaleItem).where(SaleItem.sale_id == sale.id).order_by(SaleItem.sequence)
+    )).scalars().all()
+
+    payments = (await db.execute(
+        select(Payment).where(Payment.sale_id == sale.id)
+    )).scalars().all()
+    method_ids = {p.payment_method_id for p in payments}
+    methods = (await db.execute(
+        select(TenantPaymentMethod).where(TenantPaymentMethod.id.in_(method_ids))
+    )).scalars().all() if method_ids else []
+    methods_by_id = {m.id: m for m in methods}
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tid))).scalar_one()
+
+    client = await db.get(Client, sale.client_id) if sale.client_id else None
+
+    printer_cfg = (await db.execute(
+        select(TenantPrinterConfig).where(TenantPrinterConfig.tenant_id == tid)
+    )).scalar_one_or_none()
+
+    address_parts = [
+        tenant.address_line1, tenant.address_line2,
+        f"{tenant.city}, {tenant.region} {tenant.postal_code}".strip(", ") if tenant.city else None,
+    ]
+    address = ", ".join(p for p in address_parts if p) or None
+
+    next_appt = await _next_appointment_str(sale.client_id, tid, db) if sale.client_id else None
+
+    cash_method_ids = {
+        m.id for m in methods if m.kind == PaymentMethodKind.cash
+    }
+    has_cash = any(p.payment_method_id in cash_method_ids for p in payments)
+
+    completed_str = sale.completed_at.strftime("%m/%d/%Y    %H:%M") if sale.completed_at else ""
+
+    return ReceiptDataOut(
+        sale_id=str(sale.id),
+        completed_at=completed_str,
+        salon_name=tenant.name,
+        address=address,
+        phone=tenant.phone,
+        booking_email=tenant.booking_email,
+        receipt_logo_url=printer_cfg.receipt_logo_url if printer_cfg else None,
+        client_first_name=client.first_name if client else None,
+        next_appointment=next_appt,
+        items=[
+            ReceiptItemOut(
+                description=it.description,
+                quantity=it.quantity,
+                line_total=str(it.line_total),
+            )
+            for it in items
+        ],
+        subtotal=str(sale.subtotal),
+        gst_amount=str(sale.gst_amount),
+        pst_amount=str(sale.pst_amount),
+        total=str(sale.total),
+        payments=[
+            ReceiptPaymentOut(
+                label=(
+                    methods_by_id[p.payment_method_id].label
+                    if p.payment_method_id in methods_by_id else "Payment"
+                ),
+                amount=str(p.amount),
+                is_cash=p.payment_method_id in cash_method_ids,
+            )
+            for p in payments
+        ],
+        printer_name=printer_cfg.printer_name if printer_cfg else "EPSON TM-T88V Receipt",
+        cash_drawer_enabled=printer_cfg.cash_drawer_enabled if printer_cfg else False,
+        auto_print_on_cash=printer_cfg.auto_print_on_cash if printer_cfg else False,
+        has_cash_payment=has_cash,
+    )
