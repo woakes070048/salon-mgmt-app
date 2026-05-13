@@ -1253,6 +1253,35 @@ The `developer` and `claude_code` briefings use a simple Cloud Scheduler → `PO
 
 ---
 
+### P3-14 · QZ Tray signing — move to backend (pre-SaaS hardening)
+
+**Current state (single-tenant):** The QZ Tray private key is injected into the frontend bundle at build time via a GitHub secret (`VITE_QZ_PRIVATE_KEY`). The certificate is hardcoded in `frontend/src/lib/qzTray.ts`. This works for Salon Lyol but does not scale to multi-tenant SaaS — the private key would be extractable from any tenant's browser bundle, and every new PC would need the certificate imported manually.
+
+**What to build:**
+
+1. **Platform RSA keypair** — generate a proper SalonOS platform keypair (replacing the QZ Tray demo cert). Store the private key in Secret Manager. The public certificate is distributed once during onboarding.
+
+2. **Backend signing endpoint** — `POST /sales/{id}/sign-print` (or a generic `POST /qz/sign`). Accepts the `toSign` string from QZ Tray's signature challenge, signs it with the platform private key from Secret Manager, returns the base64 signature. Requires staff auth. Short-lived (the signature is only valid for the QZ Tray session).
+
+3. **Frontend change** — replace `signData()` in `qzTray.ts` with a fetch to `POST /qz/sign`. Remove `VITE_QZ_PRIVATE_KEY` from the build entirely. The private key never touches the browser.
+
+4. **Onboarding artifact** — a downloadable `salonos-certificate.crt` (the platform public cert) available in Settings → Printer. Staff import it into QZ Tray Site Manager once per PC. Same file for every tenant.
+
+5. **Remove build-time injection** — strip `VITE_QZ_PRIVATE_KEY` from `frontend/Dockerfile`, `.github/workflows/deploy.yml`, and the GitHub secret.
+
+**Signing flow (post-migration):**
+```
+Browser → QZ Tray challenge (toSign string)
+Browser → POST /qz/sign { toSign } → Backend (Secret Manager) → { signature }
+Browser → QZ Tray (signature) → prints ✓
+```
+
+**Why this matters for SaaS:** The platform cert is the same for all tenants — one import step per PC during onboarding, regardless of how many salons are on the platform. The private key is never in the browser.
+
+**Depends on:** Multi-tenant onboarding flow. Low urgency until second tenant is onboarded.
+
+---
+
 ## Parallel Run Reconciliation Tasks
 
 ### PR-1 · Sales reconciliation — WALK_IN retail gap · ✅ Complete
