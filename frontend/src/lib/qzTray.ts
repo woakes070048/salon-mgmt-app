@@ -124,6 +124,9 @@ export interface ReceiptData {
   receipt_logo_url: string | null
   client_first_name: string | null
   next_appointment: string | null
+  client_name: string | null
+  last_appointment_date: string | null
+  last_appointment_services: string | null
   colour_note: string | null
   colour_note_date: string | null
   special_instructions: string | null
@@ -216,9 +219,19 @@ function buildCommands(d: ReceiptData): object[] {
     cmds.push(raw(pad(p.label, `$${parseFloat(p.amount).toFixed(2)}`) + '\n'))
   }
 
-  // Colour notes + special instructions
-  if (d.colour_note || d.special_instructions) {
+  // Client info + colour notes + special instructions
+  if (d.client_name || d.colour_note || d.special_instructions) {
     cmds.push(raw('\n' + divider() + '\n'))
+    if (d.client_name) {
+      cmds.push(raw(BOLD_ON + d.client_name + BOLD_OFF + '\n'))
+      if (d.last_appointment_date) {
+        const lastVisit = d.last_appointment_services
+          ? `Last visit: ${d.last_appointment_date} — ${d.last_appointment_services}`
+          : `Last visit: ${d.last_appointment_date}`
+        cmds.push(raw(lastVisit + '\n'))
+      }
+      if (d.colour_note || d.special_instructions) cmds.push(raw('\n'))
+    }
     if (d.colour_note) {
       const label = d.colour_note_date ? `COLOUR NOTES (${d.colour_note_date})` : 'COLOUR NOTES'
       cmds.push(raw(BOLD_ON + label + BOLD_OFF + '\n'))

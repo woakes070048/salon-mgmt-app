@@ -1002,6 +1002,42 @@ async def patch_sale_item(
 
 # ── Helpers shared by receipt-data and send-receipt ──────────────────────────
 
+async def _last_appointment_info(
+    client_id: uuid.UUID, tenant_id: uuid.UUID, sale_id: uuid.UUID, db: AsyncSession
+) -> tuple[str, str] | None:
+    """Return (date_str, services_str) for the client's most recent completed appointment
+    that is not part of the current sale."""
+    excluded_appt_ids = (await db.execute(
+        select(SaleAppointment.appointment_id).where(SaleAppointment.sale_id == sale_id)
+    )).scalars().all()
+
+    last_appt = (await db.execute(
+        select(Appointment)
+        .where(
+            Appointment.client_id == client_id,
+            Appointment.tenant_id == tenant_id,
+            Appointment.status == AppointmentStatus.completed,
+            Appointment.id.not_in(excluded_appt_ids) if excluded_appt_ids else True,
+        )
+        .order_by(Appointment.appointment_date.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    if not last_appt:
+        return None
+
+    items = (await db.execute(
+        select(Service.name)
+        .join(AppointmentItem, AppointmentItem.service_id == Service.id)
+        .where(AppointmentItem.appointment_id == last_appt.id)
+        .order_by(AppointmentItem.start_time.asc())
+    )).scalars().all()
+
+    date_str = last_appt.appointment_date.strftime("%B %-d, %Y")
+    services_str = ", ".join(items) if items else ""
+    return date_str, services_str
+
+
 async def _next_appointment_str(
     client_id: uuid.UUID, tenant_id: uuid.UUID, db: AsyncSession
 ) -> str | None:
@@ -1053,6 +1089,9 @@ class ReceiptDataOut(BaseModel):
     sale_id: str
     receipt_number: int | None
     completed_at: str
+    client_name: str | None
+    last_appointment_date: str | None
+    last_appointment_services: str | None
     colour_note: str | None
     colour_note_date: str | None
     special_instructions: str | None
@@ -1130,6 +1169,7 @@ async def get_receipt_data(
     address = ", ".join(p for p in address_parts if p) or None
 
     next_appt = await _next_appointment_str(sale.client_id, tid, db) if sale.client_id else None
+    last_appt_info = await _last_appointment_info(sale.client_id, tid, sale.id, db) if sale.client_id else None
 
     cash_method_ids = {
         m.id for m in methods if m.kind == PaymentMethodKind.cash
@@ -1142,6 +1182,9 @@ async def get_receipt_data(
         sale_id=str(sale.id),
         receipt_number=sale.receipt_number,
         completed_at=completed_str,
+        client_name=f"{client.first_name} {client.last_name}" if client else None,
+        last_appointment_date=last_appt_info[0] if last_appt_info else None,
+        last_appointment_services=last_appt_info[1] if last_appt_info else None,
         colour_note=latest_colour_note.note_text if latest_colour_note else None,
         colour_note_date=latest_colour_note.note_date.strftime("%Y-%m-%d") if latest_colour_note else None,
         special_instructions=client.special_instructions if client else None,
