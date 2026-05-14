@@ -124,6 +124,9 @@ export interface ReceiptData {
   receipt_logo_url: string | null
   client_first_name: string | null
   next_appointment: string | null
+  colour_note: string | null
+  colour_note_date: string | null
+  special_instructions: string | null
   items: { description: string; quantity: number; line_total: string }[]
   subtotal: string
   gst_amount: string
@@ -211,6 +214,21 @@ function buildCommands(d: ReceiptData): object[] {
   cmds.push(raw('\n'))
   for (const p of d.payments) {
     cmds.push(raw(pad(p.label, `$${parseFloat(p.amount).toFixed(2)}`) + '\n'))
+  }
+
+  // Colour notes + special instructions
+  if (d.colour_note || d.special_instructions) {
+    cmds.push(raw('\n' + divider() + '\n'))
+    if (d.colour_note) {
+      const label = d.colour_note_date ? `COLOUR NOTES (${d.colour_note_date})` : 'COLOUR NOTES'
+      cmds.push(raw(BOLD_ON + label + BOLD_OFF + '\n'))
+      cmds.push(raw(d.colour_note + '\n'))
+    }
+    if (d.special_instructions) {
+      if (d.colour_note) cmds.push(raw('\n'))
+      cmds.push(raw(BOLD_ON + 'SPECIAL INSTRUCTIONS' + BOLD_OFF + '\n'))
+      cmds.push(raw(d.special_instructions + '\n'))
+    }
   }
 
   // Client footer — only if there's a next appointment to show

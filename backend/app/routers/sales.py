@@ -21,7 +21,7 @@ from app.database import get_db
 from app.deps import StaffUser
 from app.email import email_cfg_from_row, send_email
 from app.models.appointment import Appointment, AppointmentItem, AppointmentStatus
-from app.models.client import Client
+from app.models.client import Client, ClientColourNote
 from app.models.email_config import TenantEmailConfig
 from app.models.payment_method import PaymentMethodKind, TenantPaymentMethod
 from app.models.printer import TenantPrinterConfig
@@ -1053,6 +1053,9 @@ class ReceiptDataOut(BaseModel):
     sale_id: str
     receipt_number: int | None
     completed_at: str
+    colour_note: str | None
+    colour_note_date: str | None
+    special_instructions: str | None
     salon_name: str
     address: str | None
     phone: str | None
@@ -1106,6 +1109,16 @@ async def get_receipt_data(
 
     client = await db.get(Client, sale.client_id) if sale.client_id else None
 
+    latest_colour_note = None
+    if sale.client_id:
+        latest_colour_note = (await db.execute(
+            select(ClientColourNote)
+            .where(ClientColourNote.client_id == sale.client_id,
+                   ClientColourNote.tenant_id == tid)
+            .order_by(ClientColourNote.note_date.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
     printer_cfg = (await db.execute(
         select(TenantPrinterConfig).where(TenantPrinterConfig.tenant_id == tid)
     )).scalar_one_or_none()
@@ -1129,6 +1142,9 @@ async def get_receipt_data(
         sale_id=str(sale.id),
         receipt_number=sale.receipt_number,
         completed_at=completed_str,
+        colour_note=latest_colour_note.note_text if latest_colour_note else None,
+        colour_note_date=latest_colour_note.note_date.strftime("%Y-%m-%d") if latest_colour_note else None,
+        special_instructions=client.special_instructions if client else None,
         salon_name=tenant.name,
         address=address,
         phone=tenant.phone,
