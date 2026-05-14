@@ -27,7 +27,7 @@ export default function RequestsPage() {
   const { bcp47 } = useDateLocale()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const [filter, setFilter] = useState('')
+  const [filter, setFilter] = useState('new')
   const [selected, setSelected] = useState<AppointmentRequest | null>(null)
 
   const STATUS_LABELS: Record<AppointmentRequest['status'], string> = {
