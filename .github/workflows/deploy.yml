@@ -150,6 +150,18 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --quiet
 
+      - name: Fetch Cloud Run logs on API failure
+        if: failure() && steps.changes.outputs.api == 'true'
+        run: |
+          echo "=== Last 100 Cloud Run log lines ==="
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="salon-api"' \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --limit=100 \
+            --order=asc \
+            --format="value(timestamp,textPayload)" \
+            --freshness=5m || true
+
       - name: Print deployed URLs
         run: |
           echo "API: $(gcloud run services describe salon-api --region ${{ env.GCP_REGION }} --format='value(status.url)')"
