@@ -3,6 +3,7 @@ them into AppointmentRequest rows via the intent extractor.
 
 Route: POST /webhooks/email/inbound
 Auth:  No JWT. HMAC-SHA256 signature validated against Resend svix headers.
+Secret: RESEND_WEBHOOK_SECRET env var (whsec_... from Resend webhook settings).
        If resend_webhook_secret is empty (dev mode), validation is skipped.
 
 Flow:
