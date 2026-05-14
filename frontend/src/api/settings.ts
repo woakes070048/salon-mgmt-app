@@ -16,6 +16,7 @@ export interface ContactDetails {
   hours_summary: string | null
   website: string | null
   hst_number: string | null
+  booking_inbound_address: string | null
 }
 
 export interface BrandingSettings extends ContactDetails {

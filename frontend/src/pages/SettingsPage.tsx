@@ -55,7 +55,7 @@ export default function SettingsPage() {
   const [timeFormat, setTimeFormat] = useState<TimeFormat>('12h')
   const EMPTY_CONTACT: ContactDetails = {
     address_line1: null, address_line2: null, city: null, region: null,
-    postal_code: null, country: null, phone: null, hours_summary: null, website: null, hst_number: null,
+    postal_code: null, country: null, phone: null, hours_summary: null, website: null, hst_number: null, booking_inbound_address: null,
   }
   const [contact, setContact] = useState<ContactDetails>(EMPTY_CONTACT)
 
@@ -77,6 +77,7 @@ export default function SettingsPage() {
         hours_summary: branding.hours_summary,
         website: branding.website,
         hst_number: branding.hst_number,
+        booking_inbound_address: branding.booking_inbound_address,
       })
     }
   }, [branding])
@@ -305,6 +306,17 @@ export default function SettingsPage() {
                     placeholder="123456789 RT0001"
                     className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                   />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">Booking inbound email</label>
+                  <input
+                    type="email"
+                    value={contact.booking_inbound_address ?? ''}
+                    onChange={e => setContactField('booking_inbound_address', e.target.value)}
+                    placeholder="info@inbound.roux.salon"
+                    className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">Emails to this address appear in the Booking Inbox.</p>
                 </div>
               </div>
             </div>
