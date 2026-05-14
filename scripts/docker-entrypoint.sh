@@ -1,28 +1,20 @@
 #!/bin/sh
 set -e
 
-echo "CLOUD_SQL_INSTANCE=${CLOUD_SQL_INSTANCE:-<not set>}"
-
-# Wait for Cloud SQL socket to be ready (Gen2 sidecar may not be ready immediately)
-if [ -n "$CLOUD_SQL_INSTANCE" ]; then
-  SOCKET_FILE="/cloudsql/${CLOUD_SQL_INSTANCE}/.s.PGSQL.5432"
-  echo "Waiting for Cloud SQL socket at $SOCKET_FILE..."
-  i=0
-  while [ $i -lt 30 ]; do
-    if [ -e "$SOCKET_FILE" ]; then
-      echo "Socket ready after ${i}s."
-      break
-    fi
-    sleep 1
-    i=$((i + 1))
-  done
-  if [ ! -e "$SOCKET_FILE" ]; then
-    echo "WARNING: socket not found after 30s, attempting migration anyway..."
-  fi
-fi
-
 echo "Running database migrations..."
-alembic upgrade head
+i=1
+while [ $i -le 5 ]; do
+  if alembic upgrade head; then
+    break
+  fi
+  if [ $i -eq 5 ]; then
+    echo "ERROR: migrations failed after 5 attempts" >&2
+    exit 1
+  fi
+  echo "Migration attempt $i failed, retrying in 5s..."
+  sleep 5
+  i=$((i + 1))
+done
 
 if [ "${RUN_SEED:-false}" = "true" ]; then
   echo "Running seed..."
