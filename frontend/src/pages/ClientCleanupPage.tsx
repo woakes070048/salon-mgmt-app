@@ -62,7 +62,6 @@ function DuplicatePairCard({
 
   const primary = swapped ? pair.client_b : pair.client_a
   const secondary = swapped ? pair.client_a : pair.client_b
-  const recommendedId = pair.recommended_primary_id
 
   const mutation = useMutation({
     mutationFn: () => mergeClients(primary.id, secondary.id),
@@ -80,7 +79,7 @@ function DuplicatePairCard({
       </div>
 
       <div className="flex items-start gap-3">
-        <ClientCard client={primary} recommended={primary.id === recommendedId} />
+        <ClientCard client={primary} recommended />
 
         <button
           onClick={() => setSwapped(s => !s)}
@@ -90,7 +89,7 @@ function DuplicatePairCard({
           <ArrowLeftRight size={14} />
         </button>
 
-        <ClientCard client={secondary} recommended={secondary.id === recommendedId} />
+        <ClientCard client={secondary} recommended={false} />
       </div>
 
       <div className="flex items-center justify-between pt-1">
