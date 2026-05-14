@@ -4,10 +4,11 @@ import { useTimeFormat } from '@/lib/timeFormat'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { X, ExternalLink } from 'lucide-react'
+import { X, ExternalLink, Printer } from 'lucide-react'
 import type { Appointment, AppointmentItem } from '@/api/appointments'
 import { updateAppointmentStatus, addAppointmentItem, removeAppointmentItem } from '@/api/appointments'
-import { getClientHistory, updateClientNotes } from '@/api/clients'
+import { getClientHistory, updateClientNotes, getClientBrief } from '@/api/clients'
+import { printClientBrief } from '@/lib/qzTray'
 import { listServices } from '@/api/services'
 import { listProviders } from '@/api/providers'
 import {
@@ -78,8 +79,20 @@ export default function AppointmentDetail({ item, appointment, date, onClose }: 
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [confirmationOpen, setConfirmationOpen] = useState(false)
+  const [printing, setPrinting] = useState(false)
 
   const clientId = appointment?.client.id ?? null
+
+  async function handlePrintBrief() {
+    if (!clientId) return
+    setPrinting(true)
+    try {
+      const brief = await getClientBrief(clientId)
+      await printClientBrief(brief)
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   const { data: history = [], isLoading: historyLoading } = useQuery({
     queryKey: ['client-history', clientId],
@@ -216,6 +229,14 @@ export default function AppointmentDetail({ item, appointment, date, onClose }: 
               title={t('appt.open_client_profile')}
             >
               <ExternalLink size={14} />
+            </button>
+            <button
+              onClick={handlePrintBrief}
+              disabled={printing}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+              title="Print client brief"
+            >
+              <Printer size={14} />
             </button>
           </DialogTitle>
         </DialogHeader>
