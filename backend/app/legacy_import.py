@@ -184,7 +184,7 @@ async def _load_service_detail(db: AsyncSession, tenant_id: uuid.UUID) -> dict[s
         {"tid": tenant_id},
     )).fetchall()
     return {
-        r.service_code: {"id": r.id, "price": float(r.default_price or 0), "duration": r.duration_minutes}
+        r.service_code.lower(): {"id": r.id, "price": float(r.default_price or 0), "duration": r.duration_minutes}
         for r in rows
     }
 
@@ -402,8 +402,8 @@ async def import_bookings(
         skip_group = False
         for seq, item in enumerate(items, start=1):
             legacy_svc = (item.get("Service") or "").strip()
-            db_code = SERVICE_CODE_MAP.get(legacy_svc)
-            svc = service_detail.get(db_code) if db_code else None
+            db_code = SERVICE_CODE_MAP.get(legacy_svc) or SERVICE_CODE_MAP.get(legacy_svc.upper())
+            svc = service_detail.get(db_code.lower()) if db_code else None
             if not svc:
                 unmapped.add(legacy_svc)
                 skip_group = True
@@ -694,7 +694,7 @@ async def import_receipts(
                 if not _is_service(desc):
                     continue
                 db_code = RECEIPT_SERVICE_MAP.get(desc.lower())
-                svc = service_detail.get(db_code) if db_code else None
+                svc = service_detail.get(db_code.lower()) if db_code else None
                 provider_id = provider_map.get(staff) if staff else house_id
                 if not provider_id:
                     provider_id = house_id
@@ -865,8 +865,8 @@ async def import_past_unreceipted_bookings(
         skip_group = False
         for seq, item in enumerate(items, start=1):
             legacy_svc = (item.get("Service") or "").strip()
-            db_code = SERVICE_CODE_MAP.get(legacy_svc)
-            svc = service_detail.get(db_code) if db_code else None
+            db_code = SERVICE_CODE_MAP.get(legacy_svc) or SERVICE_CODE_MAP.get(legacy_svc.upper())
+            svc = service_detail.get(db_code.lower()) if db_code else None
             if not svc:
                 skip_group = True
                 break
