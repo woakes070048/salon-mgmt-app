@@ -1051,6 +1051,7 @@ class ReceiptPaymentOut(BaseModel):
 
 class ReceiptDataOut(BaseModel):
     sale_id: str
+    receipt_number: int | None
     completed_at: str
     salon_name: str
     address: str | None
@@ -1126,6 +1127,7 @@ async def get_receipt_data(
 
     return ReceiptDataOut(
         sale_id=str(sale.id),
+        receipt_number=sale.receipt_number,
         completed_at=completed_str,
         salon_name=tenant.name,
         address=address,

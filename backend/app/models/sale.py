@@ -40,6 +40,7 @@ class Sale(TenantScopedBase):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    receipt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SaleItem(TenantScopedBase):

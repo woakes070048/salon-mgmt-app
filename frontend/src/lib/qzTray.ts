@@ -113,6 +113,7 @@ function divider(char: string = '-'): string {
 
 export interface ReceiptData {
   sale_id: string
+  receipt_number: number | null
   completed_at: string
   salon_name: string
   address: string | null
@@ -160,6 +161,11 @@ function buildCommands(d: ReceiptData): object[] {
   const cmds: object[] = []
 
   cmds.push(raw(INIT))
+
+  // Receipt number — top left
+  if (d.receipt_number != null) {
+    cmds.push(raw(LEFT + `#${d.receipt_number}\n`))
+  }
 
   // Logo (if configured)
   if (d.receipt_logo_url) {
