@@ -1023,7 +1023,7 @@ async def _next_appointment_str(
     if not row:
         return None
     appt, ai, svc = row
-    appt_date = appt.appointment_date.strftime("%A, %B %-d")
+    appt_date = appt.appointment_date.strftime("%B %-d")
     start_dt = ai.start_time
     if start_dt:
         hour = start_dt.hour
@@ -1057,6 +1057,7 @@ class ReceiptDataOut(BaseModel):
     phone: str | None
     booking_email: str | None
     website: str | None
+    hst_number: str | None
     receipt_logo_url: str | None
     client_first_name: str | None
     next_appointment: str | None
@@ -1131,6 +1132,7 @@ async def get_receipt_data(
         phone=tenant.phone,
         booking_email=tenant.booking_email,
         website=tenant.website,
+        hst_number=tenant.hst_number,
         receipt_logo_url=printer_cfg.receipt_logo_url if printer_cfg else None,
         client_first_name=client.first_name if client else None,
         next_appointment=next_appt,

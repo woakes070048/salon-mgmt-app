@@ -140,6 +140,7 @@ export interface ReceiptData {
   phone: string | null
   booking_email: string | null
   website: string | null
+  hst_number: string | null
   receipt_logo_url: string | null
   client_first_name: string | null
   next_appointment: string | null

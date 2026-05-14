@@ -55,7 +55,7 @@ export default function SettingsPage() {
   const [timeFormat, setTimeFormat] = useState<TimeFormat>('12h')
   const EMPTY_CONTACT: ContactDetails = {
     address_line1: null, address_line2: null, city: null, region: null,
-    postal_code: null, country: null, phone: null, hours_summary: null, website: null,
+    postal_code: null, country: null, phone: null, hours_summary: null, website: null, hst_number: null,
   }
   const [contact, setContact] = useState<ContactDetails>(EMPTY_CONTACT)
 
@@ -76,6 +76,7 @@ export default function SettingsPage() {
         phone: branding.phone,
         hours_summary: branding.hours_summary,
         website: branding.website,
+        hst_number: branding.hst_number,
       })
     }
   }, [branding])
@@ -292,6 +293,16 @@ export default function SettingsPage() {
                     value={contact.website ?? ''}
                     onChange={e => setContactField('website', e.target.value)}
                     placeholder="www.salonlyol.ca"
+                    className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">HST #</label>
+                  <input
+                    type="text"
+                    value={contact.hst_number ?? ''}
+                    onChange={e => setContactField('hst_number', e.target.value)}
+                    placeholder="123456789 RT0001"
                     className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
                   />
                 </div>

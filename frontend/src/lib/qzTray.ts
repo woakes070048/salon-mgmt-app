@@ -119,6 +119,7 @@ export interface ReceiptData {
   phone: string | null
   booking_email: string | null
   website: string | null
+  hst_number: string | null
   receipt_logo_url: string | null
   client_first_name: string | null
   next_appointment: string | null
@@ -175,9 +176,13 @@ function buildCommands(d: ReceiptData): object[] {
   if (d.phone) cmds.push(raw(d.phone + '\n'))
   cmds.push(raw('\n'))
 
-  // Date / time
+  // Date / time — print time, not checkout time
+  const now = new Date()
+  const printTime = now.toLocaleDateString('en-CA', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  }) + '  ' + now.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
   cmds.push(raw(LEFT))
-  cmds.push(raw(d.completed_at + '\n'))
+  cmds.push(raw(printTime + '\n'))
   cmds.push(raw(divider() + '\n'))
 
   // Line items
@@ -206,7 +211,7 @@ function buildCommands(d: ReceiptData): object[] {
   if (d.client_first_name && d.next_appointment) {
     cmds.push(raw('\n'))
     cmds.push(raw(`Hi ${d.client_first_name},\n`))
-    cmds.push(raw(`Your next appointment:\n${d.next_appointment}\n`))
+    cmds.push(raw(`Next appointment: ${d.next_appointment}\n`))
   }
 
   // Salon contact footer
@@ -217,6 +222,7 @@ function buildCommands(d: ReceiptData): object[] {
   if (d.phone) cmds.push(raw(d.phone + '\n'))
   if (d.booking_email) cmds.push(raw(d.booking_email + '\n'))
   if (d.website) cmds.push(raw(d.website + '\n'))
+  if (d.hst_number) cmds.push(raw(`HST # ${d.hst_number}\n`))
   cmds.push(raw(LEFT))
 
   // Feed and cut

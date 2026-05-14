@@ -40,6 +40,7 @@ class Tenant(Base):
     hours_summary: Mapped[str | None] = mapped_column(String(120), nullable=True)
     booking_email: Mapped[str | None] = mapped_column(Text(), nullable=True)
     website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    hst_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     booking_inbound_address: Mapped[str | None] = mapped_column(Text(), nullable=True, unique=True)
     providers_available_during_processing: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
