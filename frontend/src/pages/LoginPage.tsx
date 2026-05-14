@@ -109,15 +109,6 @@ export default function LoginPage() {
                 </svg>
                 Continue with Google
               </a>
-              <a
-                href={`${API_URL}/auth/oauth/start?provider=apple`}
-                className="flex items-center justify-center gap-3 h-11 rounded-sm border border-input bg-black text-white text-sm font-medium hover:bg-black/90 transition-colors"
-              >
-                <svg width="16" height="18" viewBox="0 0 814 1000" aria-hidden fill="currentColor">
-                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-42.5-155.5-127.4C46.7 790.7 0 663 0 541.8c0-207.8 135.4-317.9 268.5-317.9 70.7 0 129.5 46.4 173.1 46.4 42.8 0 109.9-49 188.6-49 30.1 0 108.2 2.6 168.9 80.7zm-244.7-111.9c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
-                </svg>
-                Continue with Apple
-              </a>
               <div className="flex items-center gap-3 py-1">
                 <div className="flex-1 border-t border-input" />
                 <span className="text-xs text-muted-foreground uppercase tracking-wider">or</span>

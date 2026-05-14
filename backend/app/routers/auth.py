@@ -306,9 +306,9 @@ async def update_me(
 async def oauth_start(provider: str) -> RedirectResponse:
     if not settings.auth0_domain or not settings.auth0_client_id:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="SSO not configured")
-    if provider not in ("google", "apple"):
+    if provider not in ("google",):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown provider")
-    connection = "google-oauth2" if provider == "google" else "apple"
+    connection = "google-oauth2"
     state = secrets.token_urlsafe(16)
     params = urlencode({
         "response_type": "code",
