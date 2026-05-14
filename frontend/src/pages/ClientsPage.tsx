@@ -14,7 +14,9 @@ import {
   updateClient,
   updateClientNotes,
   deleteClient,
+  getClientBrief,
 } from '@/api/clients'
+import { printClientBrief } from '@/lib/qzTray'
 import { updateAppointmentStatus } from '@/api/appointments'
 import { listProviders } from '@/api/providers'
 import { useTimeFormat } from '@/lib/timeFormat'
@@ -22,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Star, ChevronRight } from 'lucide-react'
+import { Star, ChevronRight, Printer } from 'lucide-react'
 
 // ── Client list ───────────────────────────────────────────────────────────────
 
@@ -326,6 +328,17 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
   const [notesText, setNotesText] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+
+  async function handlePrintBrief() {
+    setPrinting(true)
+    try {
+      const brief = await getClientBrief(clientId)
+      await printClientBrief(brief)
+    } finally {
+      setPrinting(false)
+    }
+  }
   const [editingProfile, setEditingProfile] = useState(false)
   const [editFirst, setEditFirst] = useState('')
   const [editLast, setEditLast] = useState('')
@@ -515,6 +528,9 @@ function ClientDetail({ clientId, onDeleted }: { clientId: string; onDeleted: ()
                   </div>
                 )}
               </div>
+              <Button size="sm" variant="ghost" className="text-muted-foreground px-2" onClick={handlePrintBrief} disabled={printing} title="Print client brief">
+                <Printer size={15} />
+              </Button>
               <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={startEditProfile}>
                 {t('common.edit')}
               </Button>
