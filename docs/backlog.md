@@ -788,6 +788,14 @@ All references to the previous salon software have been removed:
 
 Add a toggle in Settings → Email to enable/disable the staff notification email that fires when an inbound booking email is received. Currently controlled directly in the DB (`request_notifications_enabled`). Should be surfaced as a simple on/off switch so staff can manage it without a DB query.
 
+### P2-39 · Booking inbox — show original email body
+
+In the InboxDetailPanel, show the raw email body (`inbound_raw_body` already stored on the `AppointmentRequest` record) so staff can read what the client actually wrote before triaging.
+
+### P2-40 · Booking inbox — AI draft response
+
+Generate a suggested reply to the client based on the inbound email and the extracted intent. Staff can edit and send the draft directly from the detail panel via Resend. Closes the client communication loop without leaving the app.
+
 ### P2-37 · Annual / flat salary pay type for owner
 
 When onboarding a staff member (or owner), provide an "Annual salary" pay type option in addition to Hourly and Commission. Entering an annual amount lets the system divide by the number of pay cycles per year to compute the per-period gross — no hours or commission calculation required.
