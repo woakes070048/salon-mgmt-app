@@ -118,6 +118,13 @@ jobs:
           ASSETS_GCS_BUCKET: ${{ vars.ASSETS_GCS_BUCKET }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
         run: |
+          # Clear any Secret Manager reference for RESEND_WEBHOOK_SECRET so it
+          # can be set as a plain env var below (conflicts otherwise).
+          gcloud run services update salon-api \
+            --region ${{ env.GCP_REGION }} \
+            --remove-secrets=RESEND_WEBHOOK_SECRET \
+            --quiet 2>/dev/null || true
+
           ENV_FLAG="--update-env-vars RUN_SEED=false,RUN_IMPORT=false"
           if [ -n "$FRONTEND_URL" ]; then
             ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,ASSETS_GCS_BUCKET=$ASSETS_GCS_BUCKET,RESEND_WEBHOOK_SECRET=$RESEND_WEBHOOK_SECRET,RUN_SEED=false,RUN_IMPORT=false"
