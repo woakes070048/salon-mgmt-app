@@ -48,7 +48,8 @@ export default function RegisterPage() {
       setUser(user)
       navigate('/my-requests', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      const msg = err instanceof Error ? err.message : 'Registration failed'
+      setError(msg === 'Email already registered' ? '__duplicate__' : msg)
     } finally {
       setLoading(false)
     }
@@ -177,7 +178,13 @@ export default function RegisterPage() {
               <input id="confirm_password" name="confirm_password" type="password" value={form.confirm_password} onChange={handleChange} required autoComplete="new-password" className={fieldClass} />
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && error !== '__duplicate__' && <p className="text-sm text-destructive">{error}</p>}
+            {error === '__duplicate__' && (
+              <p className="text-sm text-destructive">
+                An account with this email already exists.{' '}
+                <Link to="/login" className="underline underline-offset-4">Sign in instead</Link>
+              </p>
+            )}
 
             <Button type="submit" disabled={loading} className="mt-2 h-12 rounded-sm tracking-widest uppercase text-xs">
               {loading ? t('auth.creating_account') : t('auth.create_account')}
