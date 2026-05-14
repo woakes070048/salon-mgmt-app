@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { format, parseISO, isToday } from 'date-fns'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { getClient, getClientHistory, updateClient, updateClientNotes, listColourNotes, createColourNote } from '@/api/clients'
+import { Printer } from 'lucide-react'
+import { getClient, getClientHistory, updateClient, updateClientNotes, listColourNotes, createColourNote, getClientBrief } from '@/api/clients'
 import { updateAppointmentStatus } from '@/api/appointments'
+import { printClientBrief } from '@/lib/qzTray'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -48,6 +50,18 @@ export default function ClientCard({ clientId, onClose }: Props) {
   const [editError, setEditError] = useState<string | null>(null)
   const [newNoteText, setNewNoteText] = useState('')
   const [newNoteDate, setNewNoteDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [printing, setPrinting] = useState(false)
+
+  async function handlePrintBrief() {
+    if (!clientId) return
+    setPrinting(true)
+    try {
+      const brief = await getClientBrief(clientId)
+      await printClientBrief(brief)
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   const { data: client, isLoading: clientLoading } = useQuery({
     queryKey: ['client', clientId],
@@ -160,12 +174,22 @@ export default function ClientCard({ clientId, onClose }: Props) {
           ) : (
             <span className="text-muted-foreground text-sm">Client not found</span>
           )}
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-xl leading-none mt-0.5 ml-4"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2 ml-4">
+            <button
+              onClick={handlePrintBrief}
+              disabled={printing || !client}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+              title="Print client brief"
+            >
+              <Printer size={16} />
+            </button>
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground text-xl leading-none mt-0.5"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}

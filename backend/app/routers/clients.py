@@ -16,6 +16,7 @@ from app.models.user import User
 from app.models.provider import Provider
 from app.models.service import Service
 from app.models.sale import Sale
+from app.models.printer import TenantPrinterConfig
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -699,3 +700,71 @@ async def set_household(
         .where(Appointment.client_id == client.id, Appointment.tenant_id == tid)
     )).scalar_one()
     return _client_detail(client, cnt)
+
+
+class ClientBriefOut(BaseModel):
+    client_name: str
+    special_instructions: str | None
+    colour_note: str | None
+    colour_note_date: str | None
+    last_appointment_date: str | None
+    last_appointment_services: str | None
+    printer_name: str
+
+
+@router.get("/{client_id}/brief", response_model=ClientBriefOut)
+async def get_client_brief(
+    client_id: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ClientBriefOut:
+    tid = current_user.tenant_id
+    client = (await db.execute(
+        select(Client).where(Client.id == uuid.UUID(client_id), Client.tenant_id == tid)
+    )).scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    latest_colour_note = (await db.execute(
+        select(ClientColourNote)
+        .where(ClientColourNote.client_id == client.id, ClientColourNote.tenant_id == tid)
+        .order_by(ClientColourNote.note_date.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    last_appt = (await db.execute(
+        select(Appointment)
+        .where(
+            Appointment.client_id == client.id,
+            Appointment.tenant_id == tid,
+            Appointment.status == AppointmentStatus.completed,
+        )
+        .order_by(Appointment.appointment_date.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    last_appt_date = None
+    last_appt_services = None
+    if last_appt:
+        last_appt_date = last_appt.appointment_date.strftime("%B %-d, %Y")
+        service_names = (await db.execute(
+            select(Service.name)
+            .join(AppointmentItem, AppointmentItem.service_id == Service.id)
+            .where(AppointmentItem.appointment_id == last_appt.id)
+            .order_by(AppointmentItem.start_time.asc())
+        )).scalars().all()
+        last_appt_services = ", ".join(service_names) if service_names else None
+
+    printer_cfg = (await db.execute(
+        select(TenantPrinterConfig).where(TenantPrinterConfig.tenant_id == tid)
+    )).scalar_one_or_none()
+
+    return ClientBriefOut(
+        client_name=f"{client.first_name} {client.last_name}",
+        special_instructions=client.special_instructions,
+        colour_note=latest_colour_note.note_text if latest_colour_note else None,
+        colour_note_date=latest_colour_note.note_date.strftime("%Y-%m-%d") if latest_colour_note else None,
+        last_appointment_date=last_appt_date,
+        last_appointment_services=last_appt_services,
+        printer_name=printer_cfg.printer_name if printer_cfg else "EPSON TM-T88V Receipt",
+    )

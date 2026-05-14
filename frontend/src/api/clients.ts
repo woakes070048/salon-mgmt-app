@@ -94,3 +94,17 @@ export function checkDuplicateClients(email: string, phone: string): Promise<Cli
   if (phone) params.set('phone', phone)
   return api.get<Client[]>(`/clients/check-duplicates?${params}`)
 }
+
+export interface ClientBrief {
+  client_name: string
+  special_instructions: string | null
+  colour_note: string | null
+  colour_note_date: string | null
+  last_appointment_date: string | null
+  last_appointment_services: string | null
+  printer_name: string
+}
+
+export function getClientBrief(clientId: string): Promise<ClientBrief> {
+  return api.get<ClientBrief>(`/clients/${clientId}/brief`)
+}

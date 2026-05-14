@@ -269,6 +269,59 @@ function buildCommands(d: ReceiptData): object[] {
   return cmds
 }
 
+export interface ClientBriefData {
+  client_name: string
+  special_instructions: string | null
+  colour_note: string | null
+  colour_note_date: string | null
+  last_appointment_date: string | null
+  last_appointment_services: string | null
+  printer_name: string
+}
+
+function buildClientBriefCommands(d: ClientBriefData): object[] {
+  const cmds: object[] = []
+  cmds.push(raw(INIT))
+
+  const now = new Date()
+  const printTime = now.toLocaleDateString('en-CA', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  }) + '  ' + now.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
+  cmds.push(raw(LEFT + printTime + '\n'))
+  cmds.push(raw(divider() + '\n'))
+
+  cmds.push(raw(BOLD_ON + DOUBLE_SIZE + d.client_name + NORMAL_SIZE + BOLD_OFF + '\n'))
+
+  if (d.last_appointment_date) {
+    cmds.push(raw('\n'))
+    cmds.push(raw(`Last visit: ${d.last_appointment_date}\n`))
+    if (d.last_appointment_services) cmds.push(raw(d.last_appointment_services + '\n'))
+  }
+
+  if (d.colour_note) {
+    cmds.push(raw('\n'))
+    const label = d.colour_note_date ? `COLOUR NOTES (${d.colour_note_date})` : 'COLOUR NOTES'
+    cmds.push(raw(BOLD_ON + label + BOLD_OFF + '\n'))
+    cmds.push(raw(d.colour_note + '\n'))
+  }
+
+  if (d.special_instructions) {
+    cmds.push(raw('\n'))
+    cmds.push(raw(BOLD_ON + 'SPECIAL INSTRUCTIONS' + BOLD_OFF + '\n'))
+    cmds.push(raw(d.special_instructions + '\n'))
+  }
+
+  cmds.push(raw('\n\n\n'))
+  cmds.push(raw(CUT))
+  return cmds
+}
+
+export async function printClientBrief(data: ClientBriefData): Promise<void> {
+  await ensureConnected()
+  const config = window.qz.configs.create(data.printer_name)
+  await window.qz.print(config, buildClientBriefCommands(data))
+}
+
 export async function printReceipt(data: ReceiptData): Promise<void> {
   await ensureConnected()
   const config = window.qz.configs.create(data.printer_name)
