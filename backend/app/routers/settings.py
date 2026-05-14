@@ -350,6 +350,7 @@ class PrinterConfigOut(BaseModel):
     paper_width: int
     auto_print_on_cash: bool
     cash_drawer_enabled: bool
+    print_merchant_copy: bool
     receipt_logo_url: str | None
 
 
@@ -360,6 +361,7 @@ class PrinterConfigPatch(BaseModel):
     paper_width: int | None = None
     auto_print_on_cash: bool | None = None
     cash_drawer_enabled: bool | None = None
+    print_merchant_copy: bool | None = None
 
 
 async def _get_or_create_printer_cfg(tenant_id: uuid.UUID, db: AsyncSession) -> TenantPrinterConfig:
@@ -381,6 +383,7 @@ def _printer_out(cfg: TenantPrinterConfig) -> PrinterConfigOut:
         paper_width=cfg.paper_width,
         auto_print_on_cash=cfg.auto_print_on_cash,
         cash_drawer_enabled=cfg.cash_drawer_enabled,
+        print_merchant_copy=cfg.print_merchant_copy,
         receipt_logo_url=cfg.receipt_logo_url,
     )
 

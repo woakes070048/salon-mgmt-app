@@ -1112,6 +1112,7 @@ class ReceiptDataOut(BaseModel):
     payments: list[ReceiptPaymentOut]
     printer_name: str
     cash_drawer_enabled: bool
+    print_merchant_copy: bool
     auto_print_on_cash: bool
     has_cash_payment: bool
 
@@ -1222,6 +1223,7 @@ async def get_receipt_data(
         ],
         printer_name=printer_cfg.printer_name if printer_cfg else "EPSON TM-T88V Receipt",
         cash_drawer_enabled=printer_cfg.cash_drawer_enabled if printer_cfg else False,
+        print_merchant_copy=printer_cfg.print_merchant_copy if printer_cfg else False,
         auto_print_on_cash=printer_cfg.auto_print_on_cash if printer_cfg else False,
         has_cash_payment=has_cash,
     )

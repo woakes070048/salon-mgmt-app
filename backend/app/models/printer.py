@@ -16,4 +16,5 @@ class TenantPrinterConfig(TenantScopedBase):
     paper_width: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
     auto_print_on_cash: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cash_drawer_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    print_merchant_copy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     receipt_logo_url: Mapped[str | None] = mapped_column(Text(), nullable=True)

@@ -138,6 +138,7 @@ export interface ReceiptData {
   payments: { label: string; amount: string; is_cash: boolean }[]
   printer_name: string
   cash_drawer_enabled: boolean
+  print_merchant_copy: boolean
   auto_print_on_cash: boolean
   has_cash_payment: boolean
 }
@@ -325,10 +326,21 @@ export async function printClientBrief(data: ClientBriefData): Promise<void> {
 export async function printReceipt(data: ReceiptData): Promise<void> {
   await ensureConnected()
   const config = window.qz.configs.create(data.printer_name)
-  const cmds = buildCommands(data)
-  await window.qz.print(config, cmds)
 
-  if (data.cash_drawer_enabled && data.has_cash_payment) {
+  // Client copy
+  await window.qz.print(config, buildCommands(data))
+
+  // Merchant copy — labelled, goes in the till
+  if (data.print_merchant_copy) {
+    const merchantCmds = [
+      raw(INIT + CENTER + BOLD_ON + 'MERCHANT COPY' + BOLD_OFF + '\n' + LEFT),
+      ...buildCommands(data),
+    ]
+    await window.qz.print(config, merchantCmds)
+  }
+
+  // Open drawer on every print when connected
+  if (data.cash_drawer_enabled) {
     await window.qz.print(config, [raw(DRAWER)])
   }
 }

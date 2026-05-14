@@ -1434,6 +1434,7 @@ function PrinterSection() {
   const [paperWidth, setPaperWidth] = useState<58 | 80>(80)
   const [autoprint, setAutoprint] = useState(false)
   const [cashDrawer, setCashDrawer] = useState(false)
+  const [merchantCopy, setMerchantCopy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [logoUploading, setLogoUploading] = useState(false)
   const [logoError, setLogoError] = useState<string | null>(null)
@@ -1446,6 +1447,7 @@ function PrinterSection() {
       setPaperWidth(cfg.paper_width as 58 | 80)
       setAutoprint(cfg.auto_print_on_cash)
       setCashDrawer(cfg.cash_drawer_enabled)
+      setMerchantCopy(cfg.print_merchant_copy)
     }
   }, [cfg])
 
@@ -1457,6 +1459,7 @@ function PrinterSection() {
       paper_width: paperWidth,
       auto_print_on_cash: autoprint,
       cash_drawer_enabled: cashDrawer,
+      print_merchant_copy: merchantCopy,
     }),
     onSuccess: (updated: PrinterConfig) => {
       qc.setQueryData(['printer-config'], updated)
@@ -1529,7 +1532,12 @@ function PrinterSection() {
         <label className="flex items-center gap-2 cursor-pointer text-sm">
           <input type="checkbox" checked={cashDrawer} onChange={e => setCashDrawer(e.target.checked)}
             className="h-4 w-4 rounded" />
-          Cash drawer connected
+          Cash drawer connected (opens on every receipt print)
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="checkbox" checked={merchantCopy} onChange={e => setMerchantCopy(e.target.checked)}
+            className="h-4 w-4 rounded" disabled={!cashDrawer} />
+          Print merchant copy (second receipt goes in the till)
         </label>
         <label className="flex items-center gap-2 cursor-pointer text-sm">
           <input type="checkbox" checked={autoprint} onChange={e => setAutoprint(e.target.checked)}

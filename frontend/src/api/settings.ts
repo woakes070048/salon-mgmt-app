@@ -91,6 +91,7 @@ export interface PrinterConfig {
   paper_width: number
   auto_print_on_cash: boolean
   cash_drawer_enabled: boolean
+  print_merchant_copy: boolean
   receipt_logo_url: string | null
 }
 
