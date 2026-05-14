@@ -502,9 +502,9 @@ Admin-triggered reset:
 
 ---
 
-### P2-28 · Social / SSO login via Auth0 · ✅ Committed
+### P2-28 · Social / SSO login via Auth0 · ✅ Complete
 
-Replace (or augment) the custom JWT auth with Auth0 so that staff and clients can sign in with Google or Apple without managing a separate password. Auth0's free tier covers 7,500 MAUs — enough for all tenants through early multi-tenant rollout.
+Google SSO live via Auth0 (tenant: `salonlyol.ca.auth0.com`). Login and register pages show "Continue with Google". Apple SSO removed — requires paid Apple Developer account and not needed for this use case. Auth0 credentials injected into Cloud Run via CI; Google OAuth app registered in GCP project salon-mgmt-app-2026.
 
 **Why Auth0 over alternatives:** OIDC-compliant (maps cleanly onto the existing JWT flow), strong FastAPI + React SDKs, social connections (Google, Apple) included on the free tier, and pricing scales predictably. Firebase Auth would be simpler to provision on GCP but pulls toward the Firebase ecosystem, which conflicts with the Cloud SQL / FastAPI stack.
 
@@ -1027,15 +1027,9 @@ Client-facing briefing delivered before their appointment: upcoming service remi
 
 ---
 
-### P3-7 · Smart booking — inbound email ingestion
+### P3-7 · Smart booking — inbound email ingestion · ✅ Complete
 
-Monitor the tenant's `booking_email` inbox (e.g. `info@salonlyol.ca`) via Resend inbound webhook. Parse plain-language booking requests using a Haiku intent extractor (tool-use, strict JSON schema, ~$0.001/call). Convert to a `StructuredRequest` and run it through the scheduling engine. Store as an `appointment_request` with `source = 'email'`; pre-load the recommendation in the staff review panel. Trigger existing request notification to staff.
-
-**LLM use:** `claude-haiku-4-5-20251001` for intent extraction only. Lenient mode: returns best guess from client history with confidence score when input is ambiguous. Staff sees guess + raw email + confidence indicator.
-
-**Delivery:** `POST /webhooks/email/inbound` (validate Resend signature). Match `from` address to existing client record; leave `client_id` null if unmatched.
-
-**Depends on:** Scheduling engine (built), Resend inbound webhook configured on `booking_email` domain.
+Resend inbound webhook live at `POST /webhooks/email/inbound`. Gmail routing rule forwards copies of `info@salonlyol.ca` to `info@inbound.roux.salon` (Resend). Haiku intent extractor parses plain-language requests into structured `AppointmentRequest` rows with `source = 'email'`. Booking Inbox page (`/inbox`) surfaces email-sourced requests for staff triage. Confidence score and source badge shown per request.
 
 ---
 

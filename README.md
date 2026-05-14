@@ -16,6 +16,8 @@
   &nbsp;
   <img src="https://img.shields.io/badge/phase-3%20in%20progress-blue" alt="Phase 3 in progress">
   &nbsp;
+  <img src="https://img.shields.io/badge/SSO-Google-4285F4?logo=google&logoColor=white" alt="Google SSO">
+  &nbsp;
   <img src="https://img.shields.io/badge/deployed-GCP%20Cloud%20Run-4285F4?logo=googlecloud&logoColor=white" alt="Deployed on GCP">
 </p>
 
@@ -193,7 +195,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 - Email settings: SMTP or Resend API, client communications address, accounting/payroll address
 - Payroll provider settings: provider name, email, client ID, signature, and email footer
 - **Printer settings** — receipt printer name, IP/port, paper width, cash drawer toggle, auto-print on cash checkout, receipt logo upload
-- **SSO** — Google and Apple social login via Auth0; staff can sign in without a password after the admin links their account
+- **SSO** — Google social login via Auth0; clients and staff can sign in with their Google account — no password required
 - Login audit log (admin-only) — timestamp, IP, and outcome per login attempt
 - Legacy data import: idempotent bulk import from prior system (clients, historical appointments, sales, future bookings)
 
@@ -210,7 +212,7 @@ This project replaces Salon Lyol's current system with purpose-built cloud softw
 | **5** | Voice AI receptionist · Advanced analytics · Client-facing briefings | Planned |
 | **6** | Retail ecommerce — public storefront, Stripe checkout, pickup + shipping, order management | Planned |
 
-**Phase 2 remaining:** receipt printer UAT (P2-34); client colour formula extraction from Milano (P2-35).
+**Phase 2 remaining:** client colour formula extraction from Milano (P2-35); booking inbox notification settings toggle (P2-38); inbox email body display (P2-39); AI draft response (P2-40).
 
 **Phase 3 remaining:** salon owner and stylist briefing audiences; LLM explanation rendering for booking recommendations; provider consent workflow for smart scheduling; async email processing.
 
@@ -224,13 +226,13 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 | Metric | Count |
 |--------|-------|
-| **Frontend** (TypeScript / React) | ~19,500 lines · 83 files |
-| **Backend** (Python / FastAPI) | ~14,900 lines · 73 files |
-| **Database migrations** (Alembic) | ~3,100 lines · 56 migrations |
-| **Total source** | **~37,500 lines** |
-| **Git commits** | 411 |
-| **API endpoints** | ~139 |
-| **Database entities** | 24 core models |
+| **Frontend** (TypeScript / React) | ~20,800 lines · 87 files |
+| **Backend** (Python / FastAPI) | ~15,600 lines · 74 files |
+| **Database migrations** (Alembic) | ~3,400 lines · 64 migrations |
+| **Total source** | **~39,800 lines** |
+| **Git commits** | 463 |
+| **API endpoints** | ~145 |
+| **Database entities** | 25 core models |
 
 ---
 
@@ -246,7 +248,7 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 | **Cloud** | GCP Cloud Run · Cloud SQL · Cloud Storage · Secret Manager · Artifact Registry |
 | **Infrastructure** | Terraform |
 | **CI/CD** | GitHub Actions — build, push, and deploy to Cloud Run on every push to `main` |
-| **Auth** | JWT · bcrypt |
+| **Auth** | JWT · bcrypt · Auth0 (Google SSO) |
 
 ---
 
