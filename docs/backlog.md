@@ -784,6 +784,10 @@ All references to the previous salon software have been removed:
 
 `StaffTimeEntry` model, `time_entries` router (`POST /time-entries`, `POST /time-entries/{id}/check-out`, `PATCH`, `DELETE`), dashboard clock widget, and `ManualTimeEntryDialog` for admin corrections. Payroll calculator uses summed `total_hours` when entries exist, falls back to scheduled hours otherwise.
 
+### P2-38 · Booking inbox notification settings
+
+Add a toggle in Settings → Email to enable/disable the staff notification email that fires when an inbound booking email is received. Currently controlled directly in the DB (`request_notifications_enabled`). Should be surfaced as a simple on/off switch so staff can manage it without a DB query.
+
 ### P2-37 · Annual / flat salary pay type for owner
 
 When onboarding a staff member (or owner), provide an "Annual salary" pay type option in addition to Hourly and Commission. Entering an annual amount lets the system divide by the number of pay cycles per year to compute the per-period gross — no hours or commission calculation required.
