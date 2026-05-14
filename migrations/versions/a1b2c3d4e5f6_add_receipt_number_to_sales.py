@@ -16,20 +16,12 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("CREATE SEQUENCE IF NOT EXISTS receipt_number_seq START 1001")
-    op.add_column(
-        "sales",
-        sa.Column(
-            "receipt_number",
-            sa.Integer(),
-            nullable=True,
-            server_default=sa.text("nextval('receipt_number_seq')"),
-        ),
-    )
-    # Backfill any existing rows
-    op.execute(
-        "UPDATE sales SET receipt_number = nextval('receipt_number_seq') "
-        "WHERE receipt_number IS NULL"
-    )
+    # Add column nullable with no server_default to avoid table rewrite on volatile default
+    op.add_column("sales", sa.Column("receipt_number", sa.Integer(), nullable=True))
+    # Backfill existing rows
+    op.execute("UPDATE sales SET receipt_number = nextval('receipt_number_seq') WHERE receipt_number IS NULL")
+    # Set default for future inserts
+    op.execute("ALTER TABLE sales ALTER COLUMN receipt_number SET DEFAULT nextval('receipt_number_seq')")
 
 
 def downgrade() -> None:
