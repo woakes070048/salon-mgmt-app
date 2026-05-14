@@ -1,19 +1,28 @@
 #!/bin/sh
+set -e
 
-echo "=== ENTRYPOINT: env snapshot ==="
 echo "CLOUD_SQL_INSTANCE=${CLOUD_SQL_INSTANCE:-<not set>}"
-echo "DATABASE_URL prefix=${DATABASE_URL:0:40}"
-echo "DB_USER=${DB_USER:-<not set>}"
-echo "DB_NAME=${DB_NAME:-<not set>}"
-echo "================================"
+
+# Wait for Cloud SQL socket to be ready (Gen2 sidecar may not be ready immediately)
+if [ -n "$CLOUD_SQL_INSTANCE" ]; then
+  SOCKET_FILE="/cloudsql/${CLOUD_SQL_INSTANCE}/.s.PGSQL.5432"
+  echo "Waiting for Cloud SQL socket at $SOCKET_FILE..."
+  i=0
+  while [ $i -lt 30 ]; do
+    if [ -e "$SOCKET_FILE" ]; then
+      echo "Socket ready after ${i}s."
+      break
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  if [ ! -e "$SOCKET_FILE" ]; then
+    echo "WARNING: socket not found after 30s, attempting migration anyway..."
+  fi
+fi
 
 echo "Running database migrations..."
-if ! alembic upgrade head 2>&1; then
-  echo "ERROR: alembic upgrade head failed with exit code $?" >&2
-  echo "Starting server anyway so you can inspect logs in GCP console..." >&2
-else
-  echo "Migrations complete."
-fi
+alembic upgrade head
 
 if [ "${RUN_SEED:-false}" = "true" ]; then
   echo "Running seed..."
