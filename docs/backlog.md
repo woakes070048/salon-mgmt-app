@@ -1763,6 +1763,53 @@ Automate the daily bookkeeping journal entries from SalonOS into QuickBooks Onli
 
 ---
 
+## Phase 5 — SaaS Go-to-Market
+
+Public commercialization of SalonOS / Roux as a multi-tenant SaaS for salons beyond Salon Lyol. Triggered once Salon Lyol is stable in production and the second tenant is realistic.
+
+### P5-1 · Marketing website for SalonOS / Roux
+
+A standalone marketing site that lives separately from the app. Purpose: convert curious salon owners into trial signups or sales conversations.
+
+**Domain strategy:** `roux.salon` (or `joinroux.com`) for the marketing site; the app continues to live at `app.roux.salon` or per-tenant subdomains. Both Cloudflare-managed; already-registered domains in the memory pool.
+
+**Pages (v1 scope):**
+
+- **Home** — hero ("Software for salons that actually understands how salons work"), three-pane value prop (correct multi-provider booking · AI-first briefings · transparent pricing), social proof spot (logo bar / quote when one exists), CTA to demo or trial.
+- **Product** — feature deep-dives with screenshots: appointment book grid, smart booking recommendations, briefing engine, POS + reporting, payroll. Each section is its own anchor.
+- **Pricing** — single page with tiers. Probably one tier with per-location pricing + percentage-free transactions (the "displacement story" from CLAUDE.md). Real numbers; not "contact us." Include a comparison table vs Boulevard / Mangomint / Fresha.
+- **Why Roux** — the narrative behind the product. Built by an industry insider (Salon Lyol owner), correct multi-provider sequencing (the thing every other tool gets wrong), AI integration that's actually useful not gimmicky.
+- **Demo / Get started** — embedded Cal.com or Calendly booking for a live demo. Self-serve trial signup form below (collects salon name, owner email, expected location count, current software).
+- **Blog / Field notes** — empty at launch, scaffolded. Reuse the briefing engine output (`developer` audience) as the seed content stream — daily market intel becomes weekly blog posts about the salon software landscape.
+
+**Stack — keep it simple:**
+
+- **Astro** for the marketing site (static site generator, MDX content, fast). Hosted on Cloudflare Pages — free, auto-deploys from a separate `roux-site` GitHub repo. CDN-cached globally; sub-100ms TTFB.
+- **Content in MDX** so blog posts and feature pages are just files. No CMS dependency v1.
+- **Forms (demo signup, trial signup)** post to a SalonOS backend endpoint (`POST /api/marketing/lead`) so leads land in the same place as everything else — eventually a `marketing_leads` table the briefing engine can surface as a "new leads this week" item in your daily briefing.
+- **Analytics:** Plausible (privacy-preserving) or self-hosted Umami. Not GA4.
+- **A/B testing:** out of scope for v1.
+
+**SEO considerations:**
+
+- Long-tail keywords for now: "multi-provider salon booking software," "salon software that handles colour processing," "Boulevard alternative." Don't bother fighting for "salon software" — too competitive, displacement messaging works better.
+- Schema.org `SoftwareApplication` markup on the homepage and pricing page.
+- Submit sitemap to Google Search Console once live.
+
+**v2+ (not blocking launch):**
+
+- Customer case studies (need 2-3 paying customers first)
+- ROI calculator (input current spend + missed-call rate, output projected savings — the Zenoti playbook)
+- Interactive product tour (Storylane / Arcade)
+- Webinars / live demo signup flows
+- Partner program (referral commissions for stylists who recommend Roux)
+
+**Why a separate repo:** the app and the marketing site evolve on different cadences and have different stacks. Splitting them keeps the app deploy clean and lets the site iterate independently (a copy tweak shouldn't trigger an API rebuild).
+
+**Depends on:** Salon Lyol being stable in production (i.e., the "this software exists and works" claim is true). Realistic start date: 2–4 weeks post-parallel-run.
+
+---
+
 ## Phase 6 — Retail Ecommerce
 
 Public-facing online store for retail products. Clients browse the salon's retail catalog, add items to cart, and pay online via Stripe. Fulfillment is either in-salon pickup or shipping. No card data ever touches SalonOS servers — Stripe handles PCI compliance (SAQ A).
