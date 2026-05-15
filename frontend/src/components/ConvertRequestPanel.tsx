@@ -388,10 +388,23 @@ export default function ConvertRequestPanel({ request, date, onDateChange, initi
             })).filter(s => s.serviceId)}
             desiredDate={date}
             earliestStart={(() => {
+              const note = (request.desired_time_note || '').toLowerCase()
+              if (note.includes('afternoon')) return '12:00'
+              if (note.includes('evening')) return '17:00'
+              if (note.includes('morning')) return '09:00'
+              // For today, don't suggest past slots
               const today = new Date().toISOString().slice(0, 10)
-              if (date !== today) return undefined
-              const now = new Date()
-              return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+              if (date === today) {
+                const now = new Date()
+                return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+              }
+              return undefined
+            })()}
+            latestEnd={(() => {
+              const note = (request.desired_time_note || '').toLowerCase()
+              if (note.includes('morning')) return '12:00'
+              if (note.includes('afternoon')) return '17:00'
+              return undefined
             })()}
             onSelect={applyRecommendation}
           />

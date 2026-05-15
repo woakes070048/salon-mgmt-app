@@ -88,6 +88,18 @@ def score_partial(
             overflow += item.end_minutes - latest_end
     total += w.w_overflow * overflow
 
+    # ── Client wait gap (penalise dead time the client spends waiting) ───────
+    # Sort all items by start time and sum gaps between consecutive services
+    # from the client's perspective (regardless of provider).
+    if len(assigned) > 1:
+        by_start = sorted(assigned, key=lambda i: i.start_minutes)
+        client_wait = 0
+        for a, b in zip(by_start, by_start[1:]):
+            gap = b.start_minutes - a.end_minutes
+            if gap > 0:
+                client_wait += gap
+        total += w.w_idle * client_wait
+
     # ── Packing bonus (reward tight, non-overlapping schedules) ──────────────
     if len(assigned) > 1:
         earliest = min(i.start_minutes for i in assigned)
