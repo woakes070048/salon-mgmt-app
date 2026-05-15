@@ -238,7 +238,7 @@ function PendingRequests({ requests }: { requests: AppointmentRequest[] }) {
       {requests.map(req => (
         <li key={req.id}>
           <button
-            onClick={() => navigate('/requests')}
+            onClick={() => navigate(`/appointments?request=${req.id}&date=${req.desired_date.slice(0, 10)}`)}
             className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-colors flex items-center gap-3"
           >
             <div className="flex-1 min-w-0">

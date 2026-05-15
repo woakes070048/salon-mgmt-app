@@ -123,11 +123,13 @@ async def recommend(
                 latest_end=latest,
             )
         )
-        # Sort candidates: preferred provider first (or specialist before dualist
-        # when no preference), then by start time.
+        # Filter to preferred provider when specified; otherwise sort by type then time.
         ppid = preferred_providers.get(sid)
         if ppid is not None:
-            candidates.sort(key=lambda c: (0 if c.provider_id == ppid else 1, c.start_minutes))
+            preferred = [c for c in candidates if c.provider_id == ppid]
+            # Fall back to all candidates only if preferred provider has no availability
+            candidates = preferred if preferred else candidates
+            candidates.sort(key=lambda c: c.start_minutes)
         else:
             candidates.sort(key=lambda c: (
                 0 if provider_types.get(c.provider_id) == "specialist" else 1,
