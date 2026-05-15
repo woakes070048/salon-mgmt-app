@@ -5,7 +5,8 @@ resource "google_sql_database_instance" "main" {
   region           = var.region
 
   settings {
-    tier = var.db_tier
+    tier    = var.db_tier
+    edition = var.db_edition
 
     backup_configuration {
       enabled    = true

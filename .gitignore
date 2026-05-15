@@ -50,3 +50,5 @@ infra/.terraform.lock.hcl
 *.key
 service-account*.json
 CLAUDE.md
+terraform.tfvars.dev
+backend-dev.tfbackend

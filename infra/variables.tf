@@ -25,6 +25,12 @@ variable "db_tier" {
   default     = "db-perf-optimized-N-2"
 }
 
+variable "db_edition" {
+  description = "Cloud SQL edition. ENTERPRISE_PLUS for prod (perf-optimized tiers); ENTERPRISE for dev (shared-core tiers like db-g1-small)."
+  type        = string
+  default     = "ENTERPRISE_PLUS"
+}
+
 variable "enable_schedulers" {
   description = "Whether to create Cloud Scheduler jobs (briefings, reminders). Disable in dev to avoid sending real emails."
   type        = bool

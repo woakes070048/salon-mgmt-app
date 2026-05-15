@@ -9,8 +9,10 @@ project_id  = "salon-mgmt-app-dev"
 region      = "northamerica-northeast2"
 environment = "dev"
 
-# Smaller / cheaper DB tier for dev
-db_tier = "db-f1-micro"
+# Smaller / cheaper DB tier for dev. Shared-core tiers require ENTERPRISE
+# edition; ENTERPRISE_PLUS only supports the db-perf-optimized-N-* family.
+db_tier    = "db-g1-small"
+db_edition = "ENTERPRISE"
 
 # No schedulers in dev — we don't want briefings or reminder emails firing
 enable_schedulers = false
