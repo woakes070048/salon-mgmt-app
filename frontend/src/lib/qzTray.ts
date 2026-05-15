@@ -220,31 +220,6 @@ function buildCommands(d: ReceiptData): object[] {
     cmds.push(raw(pad(p.label, `$${parseFloat(p.amount).toFixed(2)}`) + '\n'))
   }
 
-  // Client info + colour notes + special instructions
-  if (d.client_name || d.colour_note || d.special_instructions) {
-    cmds.push(raw('\n' + divider() + '\n'))
-    if (d.client_name) {
-      cmds.push(raw(BOLD_ON + d.client_name + BOLD_OFF + '\n'))
-      if (d.last_appointment_date) {
-        const lastVisit = d.last_appointment_services
-          ? `Last visit: ${d.last_appointment_date} — ${d.last_appointment_services}`
-          : `Last visit: ${d.last_appointment_date}`
-        cmds.push(raw(lastVisit + '\n'))
-      }
-      if (d.colour_note || d.special_instructions) cmds.push(raw('\n'))
-    }
-    if (d.colour_note) {
-      const label = d.colour_note_date ? `COLOUR NOTES (${d.colour_note_date})` : 'COLOUR NOTES'
-      cmds.push(raw(BOLD_ON + label + BOLD_OFF + '\n'))
-      cmds.push(raw(d.colour_note + '\n'))
-    }
-    if (d.special_instructions) {
-      if (d.colour_note) cmds.push(raw('\n'))
-      cmds.push(raw(BOLD_ON + 'SPECIAL INSTRUCTIONS' + BOLD_OFF + '\n'))
-      cmds.push(raw(d.special_instructions + '\n'))
-    }
-  }
-
   // Client footer — only if there's a next appointment to show
   if (d.client_first_name && d.next_appointment) {
     cmds.push(raw('\n'))
