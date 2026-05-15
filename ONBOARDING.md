@@ -36,11 +36,24 @@ scripts/          run_briefing.py, setup_briefing_scheduler.sh, purge_since_oct2
 
 ## GCP infrastructure
 
-- Project: `salon-mgmt-app-2026`
+**Prod project: `salon-mgmt-app-2026`**
 - Region: `northamerica-northeast2`
 - Cloud Run services: `salon-api`, `salon-frontend`
-- Cloud SQL: `salon-lyol-pg` (PostgreSQL)
-- Self-hosted GitHub Actions runner: `github-runner` VM
+- Cloud SQL: `salon-lyol-pg` in `northamerica-northeast2`
+- Deploys from `main` branch via `.github/workflows/deploy.yml`
+
+**Dev project: `salon-mgmt-app-dev`** (stood up 2026-05-15)
+- Region: `northamerica-northeast2` (compute), `us-central1` (Cloud SQL — Toronto rejects new SQL instances for new projects)
+- Cloud Run services: `salon-api`, `salon-frontend` (same names, different project = no conflict)
+- Frontend URL: https://salon-frontend-scy7cjvrfa-pd.a.run.app
+- API URL: https://salon-api-scy7cjvrfa-pd.a.run.app
+- Yellow `DEV ENVIRONMENT` banner across the top of every page
+- `ENVIRONMENT=dev` runtime — backend `send_email()` no-ops, schedulers not created
+- Deploys from `dev` branch via `.github/workflows/deploy-dev.yml`
+- All `DEV_*` GitHub Actions vars/secrets prefixed (DEV_GCP_PROJECT_ID, etc.)
+
+**Shared infra:**
+- Self-hosted GitHub Actions runner: `github-runner` VM (in prod project, deploys to both envs)
 - Dev/Claude workstation: `dev-workstation` VM
 
 ## Secrets
