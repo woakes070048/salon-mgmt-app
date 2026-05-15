@@ -115,6 +115,7 @@ jobs:
       - name: Deploy API to Cloud Run
         if: steps.changes.outputs.api == 'true'
         env:
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
           ASSETS_GCS_BUCKET: ${{ vars.ASSETS_GCS_BUCKET }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
@@ -123,17 +124,16 @@ jobs:
           AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
           AUTH0_CALLBACK_URL: ${{ vars.AUTH0_CALLBACK_URL }}
         run: |
-          # Clear RESEND_WEBHOOK_SECRET secret ref and CLOUD_SQL_INSTANCE (was
-          # accidentally set during debugging; DATABASE_URL is the correct path).
+          # Clear any Secret Manager reference for RESEND_WEBHOOK_SECRET so it
+          # can be set as a plain env var below (conflicts otherwise).
           gcloud run services update salon-api \
             --region ${{ env.GCP_REGION }} \
             --remove-secrets=RESEND_WEBHOOK_SECRET \
-            --remove-env-vars=CLOUD_SQL_INSTANCE \
             --quiet 2>/dev/null || true
 
-          ENV_FLAG="--update-env-vars RUN_SEED=false,RUN_IMPORT=false"
+          ENV_FLAG="--update-env-vars CLOUD_SQL_INSTANCE=$CLOUD_SQL_INSTANCE,RUN_SEED=false,RUN_IMPORT=false"
           if [ -n "$FRONTEND_URL" ]; then
-            ENV_FLAG="--update-env-vars FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,ASSETS_GCS_BUCKET=$ASSETS_GCS_BUCKET,RESEND_WEBHOOK_SECRET=$RESEND_WEBHOOK_SECRET,AUTH0_DOMAIN=$AUTH0_DOMAIN,AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID,AUTH0_CLIENT_SECRET=$AUTH0_CLIENT_SECRET,AUTH0_CALLBACK_URL=$AUTH0_CALLBACK_URL,RUN_SEED=false,RUN_IMPORT=false"
+            ENV_FLAG="--update-env-vars CLOUD_SQL_INSTANCE=$CLOUD_SQL_INSTANCE,FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,ASSETS_GCS_BUCKET=$ASSETS_GCS_BUCKET,RESEND_WEBHOOK_SECRET=$RESEND_WEBHOOK_SECRET,AUTH0_DOMAIN=$AUTH0_DOMAIN,AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID,AUTH0_CLIENT_SECRET=$AUTH0_CLIENT_SECRET,AUTH0_CALLBACK_URL=$AUTH0_CALLBACK_URL,RUN_SEED=false,RUN_IMPORT=false"
           fi
           gcloud run deploy salon-api \
             --image ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
