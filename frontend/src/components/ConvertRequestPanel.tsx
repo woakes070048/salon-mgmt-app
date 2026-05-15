@@ -403,7 +403,9 @@ export default function ConvertRequestPanel({ request, date, onDateChange, initi
             latestEnd={(() => {
               const note = (request.desired_time_note || '').toLowerCase()
               if (note.includes('morning')) return '12:00'
-              if (note.includes('afternoon')) return '17:00'
+              // Afternoon covers up to early evening so the engine can offer
+              // late-day slots (e.g. 4:40p start + 95 min total = 6:15p end).
+              if (note.includes('afternoon')) return '19:00'
               return undefined
             })()}
             onSelect={applyRecommendation}

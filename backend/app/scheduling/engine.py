@@ -229,9 +229,12 @@ async def recommend(
             )
             assigned.append(item)
 
-            # Compute partial score for pruning
+            # Compute partial score for pruning. Pass provider_free so the
+            # scorer can penalise gaps between the booking and the provider's
+            # existing schedule (tight-packing reward).
             new_partial = score_partial(
-                assigned, preferred_providers, earliest, latest, weights
+                assigned, preferred_providers, earliest, latest, weights,
+                provider_free=provider_free,
             )
             if new_partial < best_score:
                 dfs(depth + 1, assigned, claimed_stations, new_partial)

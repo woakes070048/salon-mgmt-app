@@ -8,23 +8,35 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from app.scheduling.types import ScheduledItem
+from app.scheduling.types import FreeInterval, ScheduledItem
 
 
-# Canonical service name fragments for sequence checking.
-# Lower index = earlier in sequence.
-_CANONICAL_SEQUENCE = ["colour", "cut", "blowdry", "blow dry", "blowout"]
+# Ordered list of (substring, rank) tuples — first matching substring on the
+# (lowercased) service name wins. Lower rank = earlier in the sequence.
+# Camo is checked BEFORE "colour" so "Camo Colour" gets the camo rank, which
+# sits between cut and blowdry per Salon Lyol convention.
+_SEQUENCE_RULES: list[tuple[str, int]] = [
+    ("camo", 3),         # post-cut colour refresh — after cut, before blowdry
+    ("colour", 0),       # regular colour services come first
+    ("color", 0),        # US spelling
+    ("cut", 2),          # haircut
+    ("blowdry", 5),      # finishing styling
+    ("blow dry", 5),
+    ("blowout", 5),
+]
+_SEQUENCE_UNKNOWN_RANK = 99
 
 
 @dataclass
 class ScorerWeights:
     w_idle: float = 1.0        # minutes of idle time introduced
-    w_pref: float = 30.0       # per provider preference mismatch
+    w_pref: float = 150.0      # per provider preference mismatch — explicit pref dominates
     w_time: float = 0.5        # per minute distance from preferred window
     w_seq: float = 1000.0      # per sequencing violation
     w_overflow: float = 500.0  # per overflow minute
     w_consent: float = 30.0    # per item that requires provider consent
     w_pack: float = 0.3        # packing bonus (subtracted)
+    w_lead_gap: float = 1.0    # minutes between booking start and prior appt for provider
 
 
 _DEFAULT_WEIGHTS = ScorerWeights()
@@ -36,10 +48,16 @@ def score_partial(
     earliest_start: int,
     latest_end: int,
     weights: ScorerWeights = _DEFAULT_WEIGHTS,
+    provider_free: dict[uuid.UUID, list[FreeInterval]] | None = None,
 ) -> float:
     """Score a partial or complete set of assigned items.
 
     Used both for pruning (partial) and final ranking (complete).
+
+    If `provider_free` is supplied, an extra penalty is applied for booking
+    a provider with a gap between the start of their free interval (which is
+    typically the end of a prior appointment) and the start of the booking.
+    This rewards tight packing against the provider's existing schedule.
     """
     if not assigned:
         return 0.0
@@ -62,6 +80,33 @@ def score_partial(
                 idle_minutes += gap
 
     total += w.w_idle * idle_minutes
+
+    # ── Lead-in gap (idle time between booking and prior appt for provider) ──
+    # Penalise leaving a useless gap between the provider's previous
+    # appointment (= start of their current free interval) and the booking.
+    # Booking at 1:00 after a 1:00 ending appt = 0 gap; booking at 1:30 = 30.
+    if provider_free is not None:
+        for pid, items in by_provider.items():
+            intervals = provider_free.get(pid)
+            if not intervals:
+                continue
+            for item in items:
+                # Find the free interval that contains this item
+                containing = next(
+                    (
+                        iv for iv in intervals
+                        if iv.start_minutes <= item.start_minutes <= iv.end_minutes
+                    ),
+                    None,
+                )
+                if containing is None:
+                    continue
+                lead_gap = item.start_minutes - containing.start_minutes
+                # Only penalise if the prior booking is THIS one's start, not the
+                # natural start of the day. Heuristic: skip if interval start ==
+                # operating start (lead_gap from open isn't waste).
+                if lead_gap > 0 and containing.start_minutes > earliest_start:
+                    total += w.w_lead_gap * lead_gap
 
     # ── Provider preference mismatches ────────────────────────────────────────
     mismatches = 0
@@ -133,12 +178,17 @@ def score_requires_consent(
 
 
 def _service_sequence_rank(name: str) -> int:
-    """Return the canonical position of a service name (lower = earlier)."""
+    """Return the canonical position of a service name (lower = earlier).
+
+    Matches against _SEQUENCE_RULES in order — first substring match wins.
+    Unknown service names get a high rank, which means they don't trigger
+    violations against any known service.
+    """
     name_lower = name.lower()
-    for i, fragment in enumerate(_CANONICAL_SEQUENCE):
+    for fragment, rank in _SEQUENCE_RULES:
         if fragment in name_lower:
-            return i
-    return len(_CANONICAL_SEQUENCE)  # unknown → comes last (no violation)
+            return rank
+    return _SEQUENCE_UNKNOWN_RANK
 
 
 def _count_sequence_violations(items: list[ScheduledItem]) -> int:
