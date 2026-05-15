@@ -50,6 +50,31 @@ function SubNavLabel({ label }: { label: string }) {
   )
 }
 
+function CollapsibleSubNavHeader({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full px-4 pt-3 pb-0.5 flex items-center gap-1 group cursor-pointer"
+    >
+      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
+        {label}
+      </span>
+      <ChevronRight
+        size={10}
+        className={`text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+      />
+    </button>
+  )
+}
+
 export default function AppShell() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
@@ -82,6 +107,41 @@ export default function AppShell() {
   )
 
   const [adminOpen, setAdminOpen] = useState(false)
+
+  // Admin subsections — each independently collapsible, state persists.
+  // The section containing the active route auto-expands so context is preserved.
+  type AdminSection = 'catalog' | 'users' | 'finance' | 'settings'
+  const SECTION_ROUTES: Record<AdminSection, string[]> = {
+    catalog: ['/services', '/retail'],
+    users:   ['/users', '/staff', '/login-log'],
+    finance: ['/till', '/sales', '/reports'],
+    settings: ['/settings', '/import'],
+  }
+  const activeSection: AdminSection | null = (() => {
+    for (const [key, prefixes] of Object.entries(SECTION_ROUTES) as [AdminSection, string[]][]) {
+      if (prefixes.some(p => location.pathname.startsWith(p))) return key
+    }
+    return null
+  })()
+  const [openSections, setOpenSections] = useState<Record<AdminSection, boolean>>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('adminSubsectionsOpen') ?? '{}')
+      return { catalog: false, users: false, finance: false, settings: false, ...stored }
+    } catch {
+      return { catalog: false, users: false, finance: false, settings: false }
+    }
+  })
+  // Auto-expand the section containing the current route
+  useEffect(() => {
+    if (activeSection && !openSections[activeSection]) {
+      setOpenSections(prev => ({ ...prev, [activeSection]: true }))
+    }
+  }, [activeSection])
+  const toggleSection = (key: AdminSection) => setOpenSections(prev => {
+    const next = { ...prev, [key]: !prev[key] }
+    localStorage.setItem('adminSubsectionsOpen', JSON.stringify(next))
+    return next
+  })
 
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ['requests', 'new'],
@@ -196,27 +256,43 @@ export default function AppShell() {
                   </button>
                   {adminOpen && (
                     <>
-                      <SubNavLabel label={t('nav.catalog')} />
-                      <SubNavLink to="/services" icon={Scissors}    label={t('nav.services')} />
-                      <SubNavLink to="/retail"   icon={ShoppingBag} label={t('nav.retail')}   />
+                      <CollapsibleSubNavHeader label={t('nav.catalog')} open={openSections.catalog} onToggle={() => toggleSection('catalog')} />
+                      {openSections.catalog && (
+                        <>
+                          <SubNavLink to="/services" icon={Scissors}    label={t('nav.services')} />
+                          <SubNavLink to="/retail"   icon={ShoppingBag} label={t('nav.retail')}   />
+                        </>
+                      )}
 
-                      <SubNavLabel label={t('nav.users_group')} />
-                      <SubNavLink to="/users"     icon={User}       label={t('nav.admins')}     />
-                      <SubNavLink to="/staff"     icon={UserCog}    label={t('nav.staff')}      />
-                      <SubNavLink to="/login-log" icon={ScrollText} label={t('nav.login_log')}  />
+                      <CollapsibleSubNavHeader label={t('nav.users_group')} open={openSections.users} onToggle={() => toggleSection('users')} />
+                      {openSections.users && (
+                        <>
+                          <SubNavLink to="/users"     icon={User}       label={t('nav.admins')}     />
+                          <SubNavLink to="/staff"     icon={UserCog}    label={t('nav.staff')}      />
+                          <SubNavLink to="/login-log" icon={ScrollText} label={t('nav.login_log')}  />
+                        </>
+                      )}
 
-                      <SubNavLabel label={t('nav.finance')} />
-                      <SubNavLink to="/till"               icon={Vault}      label={t('nav.till')}       />
-                      <SubNavLink to="/sales"              icon={Receipt}    label="Sales"               />
-                      <SubNavLink to="/reports/sales"      icon={Receipt}    label="Daily Report"        />
-                      <SubNavLink to="/reports/transactions"  icon={List}       label="Transactions"            />
-                      <SubNavLink to="/reports/payroll"        icon={DollarSign} label={t('nav.payroll')}        />
-                      <SubNavLink to="/reports/payroll-detail" icon={List}       label="Payroll Detail"          />
-                      <SubNavLink to="/reports/petty-cash"    icon={Coins}      label={t('nav.petty_cash')}     />
+                      <CollapsibleSubNavHeader label={t('nav.finance')} open={openSections.finance} onToggle={() => toggleSection('finance')} />
+                      {openSections.finance && (
+                        <>
+                          <SubNavLink to="/till"               icon={Vault}      label={t('nav.till')}       />
+                          <SubNavLink to="/sales"              icon={Receipt}    label="Sales"               />
+                          <SubNavLink to="/reports/sales"      icon={Receipt}    label="Daily Report"        />
+                          <SubNavLink to="/reports/transactions"  icon={List}       label="Transactions"            />
+                          <SubNavLink to="/reports/payroll"        icon={DollarSign} label={t('nav.payroll')}        />
+                          <SubNavLink to="/reports/payroll-detail" icon={List}       label="Payroll Detail"          />
+                          <SubNavLink to="/reports/petty-cash"    icon={Coins}      label={t('nav.petty_cash')}     />
+                        </>
+                      )}
 
-                      <SubNavLabel label={t('nav.settings')} />
-                      <SubNavLink to="/settings" icon={Settings} label={t('nav.settings')} />
-                      <SubNavLink to="/import"   icon={Upload}   label={t('nav.import')}   />
+                      <CollapsibleSubNavHeader label={t('nav.settings')} open={openSections.settings} onToggle={() => toggleSection('settings')} />
+                      {openSections.settings && (
+                        <>
+                          <SubNavLink to="/settings" icon={Settings} label={t('nav.settings')} />
+                          <SubNavLink to="/import"   icon={Upload}   label={t('nav.import')}   />
+                        </>
+                      )}
                     </>
                   )}
                 </>
