@@ -41,6 +41,19 @@ resource "google_service_account_iam_member" "deployer_impersonate_runtime" {
   member             = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+# Frontend Cloud Run service doesn't specify a service_account so it uses
+# the project's default compute SA. Deployer needs serviceAccountUser on
+# that too to deploy new frontend revisions.
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+resource "google_service_account_iam_member" "deployer_impersonate_compute_default" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # Deployer needs to connect to Cloud SQL through the Auth Proxy from the
 # self-hosted runner during the CI migration step.
 resource "google_project_iam_member" "deployer_sql_client" {
