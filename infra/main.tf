@@ -24,6 +24,7 @@ resource "google_project_service" "apis" {
     "run.googleapis.com",
     "sqladmin.googleapis.com",
     "sql-component.googleapis.com",
+    "compute.googleapis.com",        # Cloud SQL provisions on Compute infra; required for instance create
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
     "iam.googleapis.com",
