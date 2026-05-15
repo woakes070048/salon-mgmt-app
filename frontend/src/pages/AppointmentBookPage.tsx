@@ -410,7 +410,7 @@ export default function AppointmentBookPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden p-4">
+      <main className={`flex-1 overflow-hidden p-4 ${convertRequest ? 'mr-[420px]' : ''}`}>
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />

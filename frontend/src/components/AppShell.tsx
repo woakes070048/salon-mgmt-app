@@ -280,7 +280,13 @@ export default function AppShell() {
           <div className="border-t">
             <MiniCalendar
               selectedDate={calendarDate}
-              onDateChange={d => navigate(`/appointments?date=${d}`)}
+              onDateChange={d => {
+                // Preserve the ?request= param so the convert panel stays
+                // mounted as the user clicks through dates.
+                const params = new URLSearchParams(searchParams)
+                params.set('date', d)
+                navigate(`/appointments?${params.toString()}`)
+              }}
             />
           </div>
         )}
