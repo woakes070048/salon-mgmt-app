@@ -1352,6 +1352,26 @@ When a staff member converts a request → appointment today, the client gets th
 
 ---
 
+### P3-19 · Client-facing service catalogue — visibility flag + dropdown overflow
+
+Two related problems with the service picker in the public booking dialog (`RequestAppointmentDialog`):
+
+1. **Internal-only services are shown to clients.** Items like "Business Reimbursement", "Redo", "Additional styling", "Fringe/Bang Cut" (add-on), "Heat Tool Finish" (add-on), "Treatments 1", "Olaplex" (often an add-on) appear in the dropdown. Clients should only see top-level bookable services (Type 1/2/2+ Haircut, Camo Colour, Full Balayage, Root Touch-Up, Color Full Color, Blowdry, Special Updo, etc.). Add-ons and internal services should be staff-only.
+
+2. **Dropdown overflow / horizontal truncation.** Long names like "Business Reimbursement", "MK Hair Botox (with home care)", "MK Hair Botox (without...)" run off the right edge of the popover and get clipped.
+
+**What to build:**
+
+1. **`Service.is_client_bookable` boolean column** (default `true` for top-level services, `false` for add-ons / internal). Migration backfills based on existing service naming.
+2. **Settings → Services UI** gets a "Client-bookable" toggle per service. Staff can curate which appear on the public form.
+3. **Public booking form** filters services by `is_client_bookable = true`.
+4. **Staff-side flows** (ConvertRequestPanel, BookingForm) continue to show everything — internal services are still bookable by staff.
+5. **Dropdown overflow fix**: switch the service `SelectContent` to allow text wrapping or truncate with ellipsis + full name on hover. Increase the popover width to fit common service names.
+
+**Why:** clients are picking services they shouldn't (creating noise in the inbox and confusion at confirmation time), and the truncated display makes some services look broken.
+
+---
+
 ## Parallel Run Reconciliation Tasks
 
 ### PR-1 · Sales reconciliation — WALK_IN retail gap · ✅ Complete
