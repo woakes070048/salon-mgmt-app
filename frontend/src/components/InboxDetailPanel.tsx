@@ -175,6 +175,13 @@ export default function InboxDetailPanel({ request, onClose, onRefresh }: Props)
               {request.desired_time_note && ` · ${request.desired_time_note}`}
               {' · '}
               {request.email}
+              {request.phone && ` · ${request.phone}`}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Submitted {new Date(request.submitted_at).toLocaleString('en-CA', {
+                month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit', hour12: true,
+              })}
             </p>
           </div>
           <button

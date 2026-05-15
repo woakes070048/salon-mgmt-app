@@ -113,7 +113,10 @@ export default function RequestsPage() {
                     })}
                     {req.desired_time_note && ` · ${req.desired_time_note}`}
                     {' · submitted '}
-                    {new Date(req.submitted_at).toLocaleDateString(bcp47, { month: 'short', day: 'numeric' })}
+                    {new Date(req.submitted_at).toLocaleString(bcp47, {
+                      month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit', hour12: true,
+                    })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">

@@ -243,24 +243,11 @@ async def receive_inbound_email(
 
     tenant_id = matched_tenant.id
 
-    # ── Match sender to client ────────────────────────────────────────────────
-    matched_client: Client | None = None
-    if from_email:
-        matched_client = (
-            await db.execute(
-                select(Client).where(
-                    Client.tenant_id == tenant_id,
-                    Client.email == from_email,
-                    Client.is_active == True,  # noqa: E712
-                )
-            )
-        ).scalar_one_or_none()
-
     # ── Load service catalogue and provider list ──────────────────────────────
     service_catalogue = await load_service_catalogue(db, tenant_id)
     provider_list = await load_provider_list(db, tenant_id)
 
-    # ── Extract intent ────────────────────────────────────────────────────────
+    # ── Extract intent (form parser first, then LLM fallback) ─────────────────
     intent = await extract_intent(
         from_address=from_raw,
         subject=subject,
@@ -271,15 +258,45 @@ async def receive_inbound_email(
 
     confidence = intent.confidence
 
+    # ── Resolve canonical client email/phone ──────────────────────────────────
+    # Website-form emails come FROM the salon's own address (e.g. info@salonlyol.ca)
+    # with the actual client's email in the form body. Prefer the body-extracted
+    # email when available; fall back to the SMTP envelope From.
+    canonical_email = (intent.client_email or from_email).strip().lower()
+
+    # ── Match sender to client ────────────────────────────────────────────────
+    matched_client: Client | None = None
+    if canonical_email:
+        matched_client = (
+            await db.execute(
+                select(Client).where(
+                    Client.tenant_id == tenant_id,
+                    Client.email == canonical_email,
+                    Client.is_active == True,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+
     # ── Derive name fields ────────────────────────────────────────────────────
     if matched_client:
         first_name = matched_client.first_name
         last_name = matched_client.last_name
-        phone = matched_client.cell_phone or matched_client.home_phone or matched_client.work_phone or ""
+        phone = (
+            intent.client_phone
+            or matched_client.cell_phone
+            or matched_client.home_phone
+            or matched_client.work_phone
+            or ""
+        )
         client_id: uuid.UUID | None = matched_client.id
+    elif intent.client_first_name:
+        first_name = intent.client_first_name
+        last_name = intent.client_last_name or ""
+        phone = intent.client_phone or ""
+        client_id = None
     else:
         first_name, last_name = _parse_display_name(from_raw)
-        phone = ""
+        phone = intent.client_phone or ""
         client_id = None
 
     # ── Desired date ──────────────────────────────────────────────────────────
@@ -308,14 +325,15 @@ async def receive_inbound_email(
         client_id=client_id,
         first_name=first_name or "Unknown",
         last_name=last_name or "",
-        email=from_email,
+        email=canonical_email or from_email,
         phone=phone,
+        pronouns=intent.client_pronouns,
         desired_date=desired_dt,
         desired_time_note=intent.desired_time_note,
         source=AppointmentSource.email,
         special_note=special_note,
-        waiver_acknowledged=False,
-        cancellation_policy_acknowledged=False,
+        waiver_acknowledged=intent.waiver_acknowledged,
+        cancellation_policy_acknowledged=intent.cancellation_acknowledged,
         status=AppointmentRequestStatus.new,
         submitted_at=datetime.now(timezone.utc),
         inbound_message_id=message_id or None,
