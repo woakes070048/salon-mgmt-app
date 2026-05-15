@@ -45,7 +45,6 @@ from app.models.appointment import (
 from app.models.client import Client
 from app.models.scheduling import RecommendationLog
 from app.models.tenant import Tenant
-from app.request_notification import send_request_notification
 from app.scheduling.engine import recommend
 from app.scheduling.intent import extract_intent
 from app.scheduling.resolver import load_provider_list, load_service_catalogue
@@ -397,8 +396,8 @@ async def receive_inbound_email(
     await db.commit()
     await db.refresh(req)
 
-    # ── Send staff notification (best-effort, after commit) ───────────────────
-    await send_request_notification(db, tenant_id, req)
+    # No staff notification: the original email already sits in the salon's
+    # booking inbox, so emailing the same address would be a duplicate.
 
     logger.info(
         "Inbound email processed: request_id=%s tenant=%s from=%s confidence=%.0f%%",
