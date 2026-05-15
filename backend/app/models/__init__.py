@@ -24,3 +24,4 @@ from app.models.promotion import TenantPromotion, PromotionKind  # noqa: F401
 from app.models.retail import RetailItem, RetailStockMovement  # noqa: F401
 from app.models.i18n import ServiceCategoryTranslation, ServiceTranslation, RetailItemTranslation  # noqa: F401
 from app.models.staff_time_entry import StaffTimeEntry  # noqa: F401
+from app.models.acknowledgement import TenantAcknowledgement  # noqa: F401

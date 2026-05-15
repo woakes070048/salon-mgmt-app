@@ -12,6 +12,7 @@ import {
 } from '@/api/appointmentRequests'
 import { listServices, type Service } from '@/api/services'
 import { listProviders, type Provider } from '@/api/providers'
+import { getPublicAcknowledgements, type PublicAcknowledgement } from '@/api/acknowledgements'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,6 +51,60 @@ interface ServiceItem {
   preferred_provider_name: string
 }
 
+function AcknowledgementBlock({
+  ack,
+  checked,
+  onChange,
+}: {
+  ack: PublicAcknowledgement
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  const { t } = useTranslation()
+  // body_text supports a `{link}` placeholder. Split on it so we can render
+  // a real anchor in place of the placeholder.
+  const parts = ack.body_text.split(/\{link\}/i)
+  const linkNode = ack.link_url ? (
+    <a
+      href={ack.link_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary underline"
+    >
+      {ack.link_text || ack.link_url}
+    </a>
+  ) : null
+
+  return (
+    <div className="rounded-md border p-4 space-y-3">
+      <div className="flex items-start gap-2">
+        <p className="text-sm font-semibold flex-1">{ack.title}</p>
+        {ack.is_required && <span className="text-destructive text-sm">*</span>}
+      </div>
+      <p className="text-sm text-foreground leading-relaxed">
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && linkNode}
+          </span>
+        ))}
+      </p>
+      <label className="flex items-center gap-2 cursor-pointer text-sm">
+        <input
+          type="radio"
+          checked={checked}
+          onChange={() => onChange(true)}
+          onClick={e => {
+            // Allow toggling off by clicking again
+            if (checked) { onChange(false); (e.target as HTMLInputElement).checked = false }
+          }}
+        />
+        <span>{t('requests.acknowledge_and_agree')}</span>
+      </label>
+    </div>
+  )
+}
+
 function RequestForm({
   open,
   onClose,
@@ -62,11 +117,16 @@ function RequestForm({
   const { t } = useTranslation()
   const { data: services = [] } = useQuery({ queryKey: ['services'], queryFn: listServices })
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: listProviders })
+  const { data: acknowledgements = [] } = useQuery({
+    queryKey: ['public-acknowledgements'],
+    queryFn: getPublicAcknowledgements,
+  })
 
   const [desiredDate, setDesiredDate] = useState('')
   const [timeNote, setTimeNote] = useState('')
   const [specialNote, setSpecialNote] = useState('')
   const [items, setItems] = useState<ServiceItem[]>([{ service_name: '', preferred_provider_name: '' }])
+  const [agreed, setAgreed] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -75,6 +135,7 @@ function RequestForm({
     setTimeNote('')
     setSpecialNote('')
     setItems([{ service_name: '', preferred_provider_name: '' }])
+    setAgreed({})
     setError(null)
   }
 
@@ -102,6 +163,12 @@ function RequestForm({
     if (!desiredDate) { setError('Please select a desired date'); return }
     if (items.some(i => !i.service_name)) { setError('Please select a service for each item'); return }
 
+    const missingAcks = acknowledgements.filter(a => a.is_required && !agreed[a.id])
+    if (missingAcks.length > 0) {
+      setError(t('requests.acknowledgements_required'))
+      return
+    }
+
     setSubmitting(true)
     try {
       await onSubmit({
@@ -109,6 +176,7 @@ function RequestForm({
         desired_time_note: timeNote || undefined,
         special_note: specialNote || undefined,
         items: items.map((item, idx) => ({ ...item, sequence: idx + 1 })),
+        acknowledgements_agreed: Object.keys(agreed).length > 0 ? agreed : undefined,
       })
       reset()
     } catch (err) {
@@ -220,6 +288,16 @@ function RequestForm({
               onChange={e => setSpecialNote(e.target.value)}
             />
           </div>
+
+          {/* Acknowledgements (tenant policies) */}
+          {acknowledgements.map(ack => (
+            <AcknowledgementBlock
+              key={ack.id}
+              ack={ack}
+              checked={!!agreed[ack.id]}
+              onChange={v => setAgreed(prev => ({ ...prev, [ack.id]: v }))}
+            />
+          ))}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

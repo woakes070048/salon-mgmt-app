@@ -272,6 +272,8 @@
     "add_service": "+ Add another service",
     "special_notes": "Special notes (optional)",
     "special_notes_placeholder": "Allergies, special instructions…",
+    "acknowledgements_required": "Please acknowledge each required policy before submitting.",
+    "acknowledge_and_agree": "I acknowledge and agree.",
     "submit_request": "Submit request",
     "no_requests_yet": "No requests yet.",
     "first_request_cta": "Request your first appointment"
@@ -592,6 +594,7 @@
     "tab_promotions": "Promotions",
     "tab_email": "Email",
     "tab_payroll": "Payroll",
+    "tab_policies": "Policies",
     "tab_account": "Account",
     "change_password_section": "Change password",
     "current_password_label": "Current password",

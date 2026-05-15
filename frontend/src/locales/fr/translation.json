@@ -272,6 +272,8 @@
     "add_service": "+ Ajouter un service",
     "special_notes": "Notes spéciales (optionnel)",
     "special_notes_placeholder": "Allergies, instructions spéciales…",
+    "acknowledgements_required": "Veuillez accepter chaque politique requise avant de soumettre.",
+    "acknowledge_and_agree": "J'accepte et j'y consens.",
     "submit_request": "Soumettre la demande",
     "no_requests_yet": "Aucune demande pour l'instant.",
     "first_request_cta": "Demandez votre premier rendez-vous"
@@ -592,6 +594,7 @@
     "tab_promotions": "Promotions",
     "tab_email": "Courriel",
     "tab_payroll": "Paie",
+    "tab_policies": "Politiques",
     "tab_account": "Compte",
     "change_password_section": "Changer le mot de passe",
     "current_password_label": "Mot de passe actuel",

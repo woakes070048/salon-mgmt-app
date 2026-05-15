@@ -31,6 +31,13 @@ import {
   type PaymentMethodKind,
 } from '@/api/paymentMethods'
 import { listPromotions, createPromotion, updatePromotion, type PromotionKind } from '@/api/promotions'
+import {
+  listAcknowledgements,
+  createAcknowledgement,
+  updateAcknowledgement,
+  deleteAcknowledgement,
+  type Acknowledgement,
+} from '@/api/acknowledgements'
 import { useAuth } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -102,7 +109,7 @@ export default function SettingsPage() {
     },
   })
 
-  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll' | 'printer' | 'account'>('branding')
+  const [tab, setTab] = useState<'branding' | 'scheduling' | 'payment-methods' | 'promotions' | 'email' | 'payroll' | 'printer' | 'policies' | 'account'>('branding')
 
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
 
@@ -114,6 +121,7 @@ export default function SettingsPage() {
     ...(isAdmin ? [{ id: 'email', label: t('settings.tab_email') }] : []),
     ...(isAdmin ? [{ id: 'payroll', label: t('settings.tab_payroll') }] : []),
     ...(isAdmin ? [{ id: 'printer', label: 'Printer' }] : []),
+    ...(isAdmin ? [{ id: 'policies', label: t('settings.tab_policies') }] : []),
     { id: 'account', label: t('settings.tab_account') },
   ] as const
 
@@ -419,6 +427,7 @@ export default function SettingsPage() {
 
         {/* Account tab — all users */}
         {tab === 'printer' && isAdmin && <PrinterSection />}
+        {tab === 'policies' && isAdmin && <PoliciesSection />}
 
         {tab === 'account' && <ChangePasswordSection />}
       </div>
@@ -1661,5 +1670,216 @@ function ChangePasswordSection() {
         </div>
       </form>
     </section>
+  )
+}
+
+// ── Policies (tenant acknowledgements) ────────────────────────────────────────
+
+function PoliciesSection() {
+  const qc = useQueryClient()
+  const { data: acks = [], isLoading } = useQuery({
+    queryKey: ['acknowledgements'],
+    queryFn: listAcknowledgements,
+  })
+
+  const [editing, setEditing] = useState<Acknowledgement | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  const createMutation = useMutation({
+    mutationFn: createAcknowledgement,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['acknowledgements'] })
+      qc.invalidateQueries({ queryKey: ['public-acknowledgements'] })
+      setCreating(false)
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<Acknowledgement> }) =>
+      updateAcknowledgement(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['acknowledgements'] })
+      qc.invalidateQueries({ queryKey: ['public-acknowledgements'] })
+      setEditing(null)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteAcknowledgement,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['acknowledgements'] })
+      qc.invalidateQueries({ queryKey: ['public-acknowledgements'] })
+    },
+  })
+
+  if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+
+  return (
+    <section className="border rounded-lg p-5 space-y-5 bg-white">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Booking-form acknowledgements</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Shown to clients on the booking-request form. Required acknowledgements must be agreed before they can submit.
+            Use <code className="px-1 py-0.5 bg-muted rounded">{'{link}'}</code> in the body to insert the hyperlink.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>+ Add</Button>
+      </div>
+
+      {creating && (
+        <AckForm
+          initial={null}
+          onCancel={() => setCreating(false)}
+          onSubmit={data => createMutation.mutate(data)}
+          submitting={createMutation.isPending}
+        />
+      )}
+
+      <div className="space-y-2">
+        {acks.length === 0 && !creating && (
+          <p className="text-sm text-muted-foreground italic">None yet. Add one to require clients to agree.</p>
+        )}
+        {acks.map(a => (
+          <div key={a.id} className="border rounded-md p-3">
+            {editing?.id === a.id ? (
+              <AckForm
+                initial={a}
+                onCancel={() => setEditing(null)}
+                onSubmit={data => updateMutation.mutate({ id: a.id, body: data })}
+                submitting={updateMutation.isPending}
+              />
+            ) : (
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm">{a.title}</p>
+                    {a.is_required && <span className="text-xs text-destructive">required</span>}
+                    {!a.is_active && <span className="text-xs text-muted-foreground">disabled</span>}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{a.body_text}</p>
+                  {a.link_url && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Link: <span className="underline">{a.link_text || a.link_url}</span> → {a.link_url}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(a)}>Edit</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => {
+                      if (confirm(`Delete "${a.title}"?`)) deleteMutation.mutate(a.id)
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AckForm({
+  initial,
+  onCancel,
+  onSubmit,
+  submitting,
+}: {
+  initial: Acknowledgement | null
+  onCancel: () => void
+  onSubmit: (data: {
+    title: string
+    body_text: string
+    link_url: string | null
+    link_text: string | null
+    is_required: boolean
+    display_order: number
+    is_active: boolean
+  }) => void
+  submitting: boolean
+}) {
+  const [title, setTitle] = useState(initial?.title ?? '')
+  const [bodyText, setBodyText] = useState(initial?.body_text ?? '')
+  const [linkUrl, setLinkUrl] = useState(initial?.link_url ?? '')
+  const [linkText, setLinkText] = useState(initial?.link_text ?? '')
+  const [isRequired, setIsRequired] = useState(initial?.is_required ?? true)
+  const [displayOrder, setDisplayOrder] = useState(initial?.display_order ?? 0)
+  const [isActive, setIsActive] = useState(initial?.is_active ?? true)
+
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        onSubmit({
+          title: title.trim(),
+          body_text: bodyText.trim(),
+          link_url: linkUrl.trim() || null,
+          link_text: linkText.trim() || null,
+          is_required: isRequired,
+          display_order: displayOrder,
+          is_active: isActive,
+        })
+      }}
+      className="space-y-3"
+    >
+      <div className="space-y-1.5">
+        <Label>Title</Label>
+        <Input value={title} onChange={e => setTitle(e.target.value)} required
+          placeholder="e.g. SALON LYOL Waiver and Release" />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Body</Label>
+        <textarea
+          value={bodyText}
+          onChange={e => setBodyText(e.target.value)}
+          required
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm min-h-[80px] resize-none"
+          placeholder="I acknowledge that I have read the {link} and understand its contents…"
+        />
+        <p className="text-xs text-muted-foreground">Use <code>{'{link}'}</code> where the hyperlink should appear.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Link text (optional)</Label>
+          <Input value={linkText} onChange={e => setLinkText(e.target.value)}
+            placeholder="SALON LYOL Waiver and Release" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Link URL (optional)</Label>
+          <Input value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+            placeholder="https://salonlyol.ca/waiver" />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isRequired} onChange={e => setIsRequired(e.target.checked)}
+            className="h-4 w-4 rounded" />
+          Required
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+            className="h-4 w-4 rounded" />
+          Active
+        </label>
+        <div className="space-y-1">
+          <Label className="text-xs">Display order</Label>
+          <Input type="number" value={displayOrder}
+            onChange={e => setDisplayOrder(parseInt(e.target.value) || 0)} />
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" size="sm" disabled={submitting}>
+          {submitting ? 'Saving…' : initial ? 'Save' : 'Create'}
+        </Button>
+      </div>
+    </form>
   )
 }

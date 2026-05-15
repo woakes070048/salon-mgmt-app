@@ -14,6 +14,7 @@ from app.database import get_db
 from app.deps import CurrentUser, StaffUser
 from app.email import email_cfg_from_row, send_email
 from app.email_layout import wrap_branded
+from app.models.acknowledgement import TenantAcknowledgement
 from app.models.appointment import (
     Appointment,
     AppointmentItem,
@@ -52,6 +53,9 @@ class AppointmentRequestIn(BaseModel):
     desired_time_note: str | None = None
     special_note: str | None = None
     items: list[RequestItemIn]
+    # Map of {acknowledgement_id (str): true}. Validated against the tenant's
+    # active required acknowledgements at submission time.
+    acknowledgements_agreed: dict[str, bool] | None = None
 
 
 class RequestItemOut(BaseModel):
@@ -197,6 +201,25 @@ async def create_request(
     if not body.items:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one service required")
 
+    # Enforce required acknowledgements
+    required_acks = (await db.execute(
+        select(TenantAcknowledgement).where(
+            TenantAcknowledgement.tenant_id == current_user.tenant_id,
+            TenantAcknowledgement.is_active == True,  # noqa: E712
+            TenantAcknowledgement.is_required == True,  # noqa: E712
+        )
+    )).scalars().all()
+    agreed = body.acknowledgements_agreed or {}
+    missing = [str(a.id) for a in required_acks if not agreed.get(str(a.id))]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "acknowledgements_required",
+                "missing_acknowledgement_ids": missing,
+            },
+        )
+
     client = await _get_guest_client(current_user.id, current_user.tenant_id, db)
 
     desired_date = datetime.strptime(body.desired_date, "%Y-%m-%d")
@@ -212,8 +235,15 @@ async def create_request(
         desired_time_note=body.desired_time_note,
         source=AppointmentSource.online_form,
         special_note=body.special_note,
-        waiver_acknowledged=False,
-        cancellation_policy_acknowledged=False,
+        waiver_acknowledged=any(
+            "waiver" in a.title.lower() and agreed.get(str(a.id))
+            for a in required_acks
+        ),
+        cancellation_policy_acknowledged=any(
+            "cancel" in a.title.lower() and agreed.get(str(a.id))
+            for a in required_acks
+        ),
+        acknowledgements_agreed=agreed or None,
         status=AppointmentRequestStatus.new,
         submitted_at=datetime.now(timezone.utc),
     )

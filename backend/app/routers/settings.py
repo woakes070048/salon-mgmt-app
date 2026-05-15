@@ -12,6 +12,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import AdminUser, StaffUser
 from app.i18n import SUPPORTED_LANGUAGES
+from app.models.acknowledgement import TenantAcknowledgement
 from app.models.printer import TenantPrinterConfig
 from app.models.schedule import TenantOperatingHours
 from app.models.tenant import Tenant
@@ -452,3 +453,133 @@ async def upload_printer_logo(
     await db.commit()
     await db.refresh(cfg)
     return _printer_out(cfg)
+
+
+# ── Acknowledgements (tenant policies shown on public booking form) ──────────
+
+
+class AcknowledgementOut(BaseModel):
+    id: str
+    title: str
+    body_text: str
+    link_url: str | None
+    link_text: str | None
+    is_required: bool
+    display_order: int
+    is_active: bool
+
+
+class AcknowledgementCreate(BaseModel):
+    title: str
+    body_text: str
+    link_url: str | None = None
+    link_text: str | None = None
+    is_required: bool = True
+    display_order: int = 0
+    is_active: bool = True
+
+
+class AcknowledgementPatch(BaseModel):
+    title: str | None = None
+    body_text: str | None = None
+    link_url: str | None = None
+    link_text: str | None = None
+    is_required: bool | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
+
+
+def _ack_out(a: TenantAcknowledgement) -> AcknowledgementOut:
+    return AcknowledgementOut(
+        id=str(a.id),
+        title=a.title,
+        body_text=a.body_text,
+        link_url=a.link_url,
+        link_text=a.link_text,
+        is_required=a.is_required,
+        display_order=a.display_order,
+        is_active=a.is_active,
+    )
+
+
+@router.get("/acknowledgements", response_model=list[AcknowledgementOut])
+async def list_acknowledgements(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[AcknowledgementOut]:
+    rows = (await db.execute(
+        select(TenantAcknowledgement)
+        .where(TenantAcknowledgement.tenant_id == current_user.tenant_id)
+        .order_by(TenantAcknowledgement.display_order.asc(),
+                  TenantAcknowledgement.created_at.asc())
+    )).scalars().all()
+    return [_ack_out(a) for a in rows]
+
+
+@router.post("/acknowledgements", response_model=AcknowledgementOut,
+             status_code=http_status.HTTP_201_CREATED)
+async def create_acknowledgement(
+    body: AcknowledgementCreate,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AcknowledgementOut:
+    ack = TenantAcknowledgement(
+        tenant_id=current_user.tenant_id,
+        title=body.title.strip(),
+        body_text=body.body_text.strip(),
+        link_url=body.link_url.strip() if body.link_url else None,
+        link_text=body.link_text.strip() if body.link_text else None,
+        is_required=body.is_required,
+        display_order=body.display_order,
+        is_active=body.is_active,
+    )
+    db.add(ack)
+    await db.commit()
+    await db.refresh(ack)
+    return _ack_out(ack)
+
+
+@router.patch("/acknowledgements/{ack_id}", response_model=AcknowledgementOut)
+async def update_acknowledgement(
+    ack_id: str,
+    body: AcknowledgementPatch,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AcknowledgementOut:
+    ack = (await db.execute(
+        select(TenantAcknowledgement).where(
+            TenantAcknowledgement.id == uuid.UUID(ack_id),
+            TenantAcknowledgement.tenant_id == current_user.tenant_id,
+        )
+    )).scalar_one_or_none()
+    if ack is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND,
+                            detail="Acknowledgement not found")
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        if isinstance(value, str):
+            value = value.strip() or None if field in ("link_url", "link_text") else value.strip()
+        setattr(ack, field, value)
+    await db.commit()
+    await db.refresh(ack)
+    return _ack_out(ack)
+
+
+@router.delete("/acknowledgements/{ack_id}",
+               status_code=http_status.HTTP_204_NO_CONTENT)
+async def delete_acknowledgement(
+    ack_id: str,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    ack = (await db.execute(
+        select(TenantAcknowledgement).where(
+            TenantAcknowledgement.id == uuid.UUID(ack_id),
+            TenantAcknowledgement.tenant_id == current_user.tenant_id,
+        )
+    )).scalar_one_or_none()
+    if ack is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND,
+                            detail="Acknowledgement not found")
+    await db.delete(ack)
+    await db.commit()

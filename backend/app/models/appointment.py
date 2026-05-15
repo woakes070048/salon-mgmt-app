@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import TenantScopedBase
@@ -100,6 +100,11 @@ class AppointmentRequest(TenantScopedBase):
     inbound_raw_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Map of {acknowledgement_id (str): true} captured at submission time.
+    # The legacy waiver_acknowledged / cancellation_policy_acknowledged columns
+    # still mirror this for the two seeded acknowledgements but the dict is
+    # the source of truth going forward.
+    acknowledgements_agreed: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class AppointmentRequestItem(TenantScopedBase):

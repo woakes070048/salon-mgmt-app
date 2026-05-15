@@ -64,6 +64,7 @@ export interface AppointmentRequestIn {
   desired_time_note?: string
   special_note?: string
   items: RequestItemIn[]
+  acknowledgements_agreed?: Record<string, boolean>
 }
 
 export function createRequest(body: AppointmentRequestIn): Promise<AppointmentRequest> {

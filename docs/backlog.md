@@ -1288,6 +1288,39 @@ Browser → QZ Tray (signature) → prints ✓
 
 ---
 
+### P3-15 · Tenant-configurable acknowledgements on public booking form · In progress
+
+The legacy salon website's booking form required clients to acknowledge a waiver and a cancellation/refunds policy before submitting. The current SalonOS `RequestAppointmentDialog` has no acknowledgements at all — clients can submit a request without agreeing to any policy.
+
+**What to build:**
+
+1. **`tenant_acknowledgements` table**: id, tenant_id, title, body_text, link_url, link_text, is_required, display_order, is_active, created_at, updated_at.
+2. **Settings → Policies admin page** to create / edit / reorder / disable acknowledgements per tenant.
+3. **Public endpoint** `GET /public/tenants/{slug}/acknowledgements` returning active ones in display order.
+4. **Booking dialog** fetches and renders acknowledgements between Special Notes and Submit; required ones show a red asterisk; submit blocked until all required are agreed.
+5. **`AppointmentRequest.acknowledgements_agreed` JSON column** records `{acknowledgement_id: true}` per submission.
+6. **Migration seeds Salon Lyol's two existing acknowledgements** (Waiver and Release, Cancellations and Refunds) matching the legacy wording.
+
+**Out of scope:** per-client history (see P3-16).
+
+---
+
+### P3-16 · Per-client acknowledgement history with versioning
+
+Once tenant acknowledgements (P3-15) are configurable, the wording or policy may change over time. For legal compliance, the salon needs to be able to prove "client X agreed to version Y of acknowledgement Z on date D" if a dispute arises.
+
+**What to build:**
+
+1. **Version the acknowledgement body**: add `version` int + `body_text_at_version` snapshot when text changes (or treat each text change as a new row, keeping the old one immutable).
+2. **`client_acknowledgements` junction table**: id, tenant_id, client_id, acknowledgement_id, version_acknowledged, acknowledged_at, source (`booking_form` | `staff_entered` | `existing_client`).
+3. **Booking form** records the version the client saw at submission time.
+4. **Re-prompt logic**: when a returning client requests a booking, check the latest acknowledgement versions against what they've previously agreed to. If a required acknowledgement has been updated since their last agreement, re-prompt for that one.
+5. **Client card view**: show acknowledgement history in the Client Notes / Profile tab so staff can see what was signed when.
+
+**Depends on:** P3-15.
+
+---
+
 ## Parallel Run Reconciliation Tasks
 
 ### PR-1 · Sales reconciliation — WALK_IN retail gap · ✅ Complete
