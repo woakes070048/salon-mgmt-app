@@ -1,25 +1,20 @@
 #!/bin/sh
 set -e
 
-# Retry alembic up to 5 times to handle Cloud SQL socket startup delay
-echo "Running database migrations..."
-i=1
-while [ $i -le 5 ]; do
-  if alembic upgrade head; then
-    break
-  fi
-  if [ $i -eq 5 ]; then
-    echo "ERROR: migrations failed after 5 attempts" >&2
-    exit 1
-  fi
-  echo "Migration attempt $i failed, retrying in 5s..."
-  sleep 5
-  i=$((i + 1))
-done
+# Migrations are NOT run here. They run as a separate CI step before the
+# Cloud Run revision is deployed (.github/workflows/deploy.yml). This keeps
+# container startup fast and decouples schema changes from the Cloud SQL
+# socket proxy timing race that used to cause "container failed to start"
+# errors during the entrypoint.
 
 if [ "${RUN_SEED:-false}" = "true" ]; then
   echo "Running seed..."
   PYTHONPATH=/app python scripts/seed.py || echo "WARNING: seed exited with errors (non-fatal)"
+fi
+
+if [ "${RUN_IMPORT:-false}" = "true" ]; then
+  echo "Running legacy import..."
+  PYTHONPATH=/app python scripts/run_import.py || echo "WARNING: import exited with errors (non-fatal)"
 fi
 
 echo "Starting server..."

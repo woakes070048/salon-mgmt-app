@@ -56,7 +56,7 @@ Alembic is the standard SQLAlchemy migration companion. Key decisions:
 - Migrations live in `migrations/` at the repo root
 - **Every model change requires a migration** — no `Base.metadata.create_all()` in production, ever
 - Migration scripts are reviewed before merging, not auto-generated blindly
-- `alembic upgrade head` runs on container startup in staging/production
+- `alembic upgrade head` runs as a dedicated CI step (`.github/workflows/deploy.yml`) **before** the new Cloud Run revision is rolled out. Migrations used to run inside `docker-entrypoint.sh` but the Cloud SQL socket isn't reliably mounted at container startup on Cloud Run Gen2, which caused revisions to time out before binding to `PORT`. The container entrypoint now only starts uvicorn.
 
 ---
 

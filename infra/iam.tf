@@ -41,6 +41,22 @@ resource "google_service_account_iam_member" "deployer_impersonate_runtime" {
   member             = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+# Deployer needs to connect to Cloud SQL through the Auth Proxy from the
+# self-hosted runner during the CI migration step.
+resource "google_project_iam_member" "deployer_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# Deployer needs to read the DB password from Secret Manager at job time
+# (so it never has to live in GitHub Secrets). Scoped to the one secret.
+resource "google_secret_manager_secret_iam_member" "deployer_db_password" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # ── Workload Identity Federation for GitHub Actions ─────────────────────────
 resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "github-pool"

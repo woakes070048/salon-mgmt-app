@@ -111,6 +111,83 @@ jobs:
             ${{ env.REGISTRY }}/salon-frontend:latest \
             ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
 
+      # ── Migrations ─────────────────────────────────────────────────────────
+      # Run alembic against Cloud SQL via the auth proxy BEFORE deploying the
+      # new revision. This used to live inside docker-entrypoint.sh but the
+      # Cloud SQL socket isn't reliably ready at container startup on Gen2,
+      # causing the revision to time out before listening on PORT.
+      #
+      # The runner's service account already has roles/cloudsql.client, so
+      # the proxy auths via Application Default Credentials. DB_PASSWORD is
+      # pulled from Secret Manager at job time — not stored in GitHub Secrets.
+      - name: Install uv
+        if: steps.changes.outputs.api == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Cloud SQL Auth Proxy
+        if: steps.changes.outputs.api == 'true'
+        run: |
+          if ! [ -x "$HOME/.local/bin/cloud-sql-proxy" ]; then
+            mkdir -p "$HOME/.local/bin"
+            curl -sSL -o "$HOME/.local/bin/cloud-sql-proxy" \
+              https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.13.0/cloud-sql-proxy.linux.amd64
+            chmod +x "$HOME/.local/bin/cloud-sql-proxy"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run alembic migrations
+        if: steps.changes.outputs.api == 'true'
+        shell: bash
+        env:
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+        run: |
+          set -euo pipefail
+
+          # Pull the DB password from Secret Manager — never stored in
+          # GitHub Secrets. The runner SA has secretAccessor on this secret.
+          DB_PASSWORD_RAW="$(gcloud secrets versions access latest \
+            --secret=salon-db-password \
+            --project="${{ env.GCP_PROJECT_ID }}")"
+
+          # URL-encode the password so special characters don't break the
+          # DSN parser (asyncpg / SQLAlchemy URL).
+          DB_PASSWORD_ENC="$(DB_PW="$DB_PASSWORD_RAW" python3 -c \
+            'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PW"], safe=""))')"
+          # Mask the password in any log output.
+          echo "::add-mask::$DB_PASSWORD_RAW"
+          echo "::add-mask::$DB_PASSWORD_ENC"
+
+          # Start the Cloud SQL Auth Proxy in TCP mode on a high port. The
+          # proxy uses Application Default Credentials from the auth step.
+          cloud-sql-proxy --port 5433 "$CLOUD_SQL_INSTANCE" &
+          PROXY_PID=$!
+          trap "kill $PROXY_PID 2>/dev/null || true" EXIT
+
+          # Wait for the proxy to start accepting connections (max ~30s).
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/5433) 2>/dev/null; then
+              echo "Cloud SQL proxy ready after ${i}s"
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "ERROR: Cloud SQL proxy never became ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Install backend deps so alembic + asyncpg are available.
+          (cd backend && uv sync --frozen)
+
+          # Run alembic from the repo root so it finds alembic.ini there.
+          # CLOUD_SQL_INSTANCE is cleared so env.py uses DATABASE_URL and
+          # connects via TCP to the local proxy.
+          DATABASE_URL="postgresql+asyncpg://salon:${DB_PASSWORD_ENC}@127.0.0.1:5433/salon_lyol" \
+          CLOUD_SQL_INSTANCE="" \
+            uv --project backend run alembic upgrade head
+
       # ── Deploy ─────────────────────────────────────────────────────────────
       - name: Deploy API to Cloud Run
         if: steps.changes.outputs.api == 'true'
