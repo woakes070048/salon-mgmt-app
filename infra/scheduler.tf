@@ -13,7 +13,10 @@ resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
 }
 
 # ── Daily briefing job — developer audience, 8am Toronto (email to Freddy) ──
+# Scheduler jobs are gated by var.enable_schedulers so dev environments
+# don't fire real email sends or run briefings on schedule.
 resource "google_cloud_scheduler_job" "briefing_developer" {
+  count            = var.enable_schedulers ? 1 : 0
   name             = "salon-briefing-developer"
   description      = "Daily market intelligence email to Freddy"
   schedule         = "0 8 * * *"
@@ -40,6 +43,7 @@ resource "google_cloud_scheduler_job" "briefing_developer" {
 
 # ── Reminder dispatcher — every 15 minutes ──────────────────────────────────
 resource "google_cloud_scheduler_job" "dispatch_reminders" {
+  count            = var.enable_schedulers ? 1 : 0
   name             = "salon-dispatch-reminders"
   description      = "Trigger appointment reminder emails every 15 minutes"
   schedule         = "*/15 * * * *"
@@ -66,6 +70,7 @@ resource "google_cloud_scheduler_job" "dispatch_reminders" {
 
 # ── Daily briefing job — claude_code audience, 7am Toronto ──────────────────
 resource "google_cloud_scheduler_job" "briefing_claude_code" {
+  count            = var.enable_schedulers ? 1 : 0
   name             = "salon-briefing-claude-code"
   description      = "Daily market intelligence briefing for Claude Code"
   schedule         = "0 7 * * *"

@@ -33,7 +33,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "ENVIRONMENT"
-        value = "staging"
+        value = var.environment
       }
       env {
         name  = "CLOUD_SQL_INSTANCE"
@@ -115,7 +115,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "CORS_ORIGINS"
-        value = "https://salon-frontend-qc33oa7roq-pd.a.run.app"
+        value = var.cors_origins != "" ? var.cors_origins : "https://salon-frontend-qc33oa7roq-pd.a.run.app"
       }
     }
   }

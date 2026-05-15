@@ -1,0 +1,35 @@
+# Copy to terraform.tfvars (in a separate clone or workspace pointing at the
+# dev project's state bucket) and fill in. See docs/dev-environment-setup.md
+# for the full bootstrap sequence.
+#
+# Environment: dev
+# Target: new GCP project (e.g. salon-mgmt-app-dev) — DO NOT use the prod project.
+
+project_id  = "salon-mgmt-app-dev"
+region      = "northamerica-northeast2"
+environment = "dev"
+
+# Smaller / cheaper DB tier for dev
+db_tier = "db-f1-micro"
+
+# No schedulers in dev — we don't want briefings or reminder emails firing
+enable_schedulers = false
+
+# Dev frontend URL — fill in after the first frontend deploy, or set to "*"
+# temporarily for local development.
+cors_origins = ""
+
+github_repo = "freddy6ix/salon-mgmt-app"
+
+# Sensitive — generate fresh values for dev, do not reuse prod secrets.
+# openssl rand -hex 32 for secret_key / internal_secret
+# Use a separate Anthropic API key + Resend sandbox key for dev so usage
+# is attributable per env.
+db_password             = "dev-only-strong-password-here"
+secret_key              = "openssl rand -hex 32"
+internal_secret         = "openssl rand -hex 32"
+anthropic_api_key       = "sk-ant-..."
+briefing_resend_api_key = "re_..."
+briefing_from_address   = "briefings-dev@inbound.roux.salon"
+briefing_email_to       = "frederick.ferguson@gmail.com"
+resend_webhook_secret   = "whsec_..."

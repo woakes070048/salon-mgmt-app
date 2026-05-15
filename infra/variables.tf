@@ -9,6 +9,34 @@ variable "region" {
   default     = "northamerica-northeast2"
 }
 
+variable "environment" {
+  description = "Deployment environment — controls db tier, scheduler jobs, and runtime ENV var"
+  type        = string
+  default     = "prod"
+  validation {
+    condition     = contains(["prod", "dev"], var.environment)
+    error_message = "environment must be 'prod' or 'dev'"
+  }
+}
+
+variable "db_tier" {
+  description = "Cloud SQL tier. Override for cost savings in dev. Prod default keeps current sizing."
+  type        = string
+  default     = "db-perf-optimized-N-2"
+}
+
+variable "enable_schedulers" {
+  description = "Whether to create Cloud Scheduler jobs (briefings, reminders). Disable in dev to avoid sending real emails."
+  type        = bool
+  default     = true
+}
+
+variable "cors_origins" {
+  description = "Comma-separated list of allowed frontend origins for the API. Override per env."
+  type        = string
+  default     = ""
+}
+
 variable "db_password" {
   description = "PostgreSQL password for the app database user"
   type        = string

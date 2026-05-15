@@ -126,6 +126,17 @@ async def send_email(
     retries: int = 3,
     reply_to_message_id: str | None = None,
 ) -> None:
+    # Dev guard: never send real emails from a dev environment. The dev
+    # GCP project is configured with ENVIRONMENT=dev so any accidental
+    # send is short-circuited here.
+    from app.config import settings as _settings
+    if (_settings.environment or "").lower() == "dev":
+        logger.info(
+            "[dev guard] send_email suppressed — would have sent to=%r subject=%r",
+            to, subject,
+        )
+        return
+
     if isinstance(cfg, ResendApiConfig):
         await _send_via_resend(cfg, to, subject, html, reply_to_message_id=reply_to_message_id)
         return

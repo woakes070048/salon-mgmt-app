@@ -16,6 +16,7 @@ import { getBranding } from '@/api/settings'
 import { updateLanguagePreference } from '@/api/auth'
 import { applyBranding } from '@/lib/branding'
 import MiniCalendar from '@/components/MiniCalendar'
+import DevBanner from '@/components/DevBanner'
 import i18n from '@/lib/i18n'
 
 const NAV_LINK = `flex items-center gap-3 px-4 py-2.5 text-sm transition-colors rounded-none`
@@ -196,7 +197,9 @@ export default function AppShell() {
     : format(new Date(), 'yyyy-MM-dd')
 
   return (
-    <div className="flex h-screen bg-muted/30">
+    <div className="flex flex-col h-screen bg-muted/30">
+      <DevBanner />
+      <div className="flex flex-1 min-h-0">
       <nav className={`${sidebarOpen ? 'w-56' : 'w-12'} flex-shrink-0 bg-white border-r flex flex-col transition-[width] duration-200 print:hidden`}>
 
         {/* Logo / header */}
@@ -442,6 +445,7 @@ export default function AppShell() {
 
       <div className="flex-1 min-w-0 overflow-hidden">
         <Outlet />
+      </div>
       </div>
     </div>
   )

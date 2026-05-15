@@ -1,0 +1,208 @@
+name: Deploy to Dev
+
+# Mirrors deploy.yml but targets the dev GCP project. Triggered by pushes
+# to the `dev` branch so prod (main) and dev evolve independently.
+#
+# Required GitHub Actions vars (Settings → Secrets and variables → Actions → Variables):
+#   DEV_GCP_PROJECT_ID
+#   DEV_GCP_REGION
+#   DEV_GCP_SERVICE_ACCOUNT
+#   DEV_GCP_WORKLOAD_IDENTITY_PROVIDER
+#   DEV_CLOUD_SQL_INSTANCE
+#   DEV_API_URL
+#   DEV_FRONTEND_URL
+#   DEV_ASSETS_GCS_BUCKET
+#   DEV_AUTH0_DOMAIN
+#   DEV_AUTH0_CLIENT_ID
+#   DEV_AUTH0_CALLBACK_URL
+#
+# Required GitHub Actions secrets:
+#   DEV_AUTH0_CLIENT_SECRET
+#   DEV_RESEND_WEBHOOK_SECRET
+#   DEV_QZ_TRAY_PRIVATE_KEY  (can reuse prod's; QZ cert/key are not env-sensitive)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: ${{ vars.DEV_GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.DEV_GCP_REGION }}
+  REGISTRY: ${{ vars.DEV_GCP_REGION }}-docker.pkg.dev/${{ vars.DEV_GCP_PROJECT_ID }}/salon-mgmt
+
+jobs:
+  deploy:
+    name: Build and deploy (dev)
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: auth
+        name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.DEV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEV_GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # Detect which sides changed (same logic as prod)
+      - name: Detect changed paths
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "api=true"      >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          if echo "$CHANGED" | grep -qE '^(backend/|migrations/|scripts/|alembic\.ini|\.github/)'; then
+            echo "api=true" >> $GITHUB_OUTPUT
+          else
+            echo "api=false" >> $GITHUB_OUTPUT
+          fi
+          if echo "$CHANGED" | grep -qE '^frontend/'; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push API image
+        if: steps.changes.outputs.api == 'true'
+        run: |
+          docker build -f backend/Dockerfile \
+            -t ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/salon-api:latest \
+            .
+          docker push ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/salon-api:latest
+
+      - name: Retag existing API image (no backend changes)
+        if: steps.changes.outputs.api == 'false'
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.REGISTRY }}/salon-api:latest \
+            ${{ env.REGISTRY }}/salon-api:${{ github.sha }}
+
+      - name: Build and push frontend image
+        if: steps.changes.outputs.frontend == 'true'
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=${{ vars.DEV_API_URL }} \
+            --build-arg VITE_QZ_PRIVATE_KEY="${{ secrets.DEV_QZ_TRAY_PRIVATE_KEY }}" \
+            --build-arg VITE_SSO_ENABLED=true \
+            --build-arg VITE_ENV=dev \
+            -f frontend/Dockerfile \
+            -t ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/salon-frontend:latest \
+            ./frontend
+          docker push ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/salon-frontend:latest
+
+      - name: Retag existing frontend image (no frontend changes)
+        if: steps.changes.outputs.frontend == 'false'
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.REGISTRY }}/salon-frontend:latest \
+            ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }}
+
+      # Migrations — same Cloud SQL proxy approach as prod
+      - name: Install uv
+        if: steps.changes.outputs.api == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Cloud SQL Auth Proxy
+        if: steps.changes.outputs.api == 'true'
+        run: |
+          if ! [ -x "$HOME/.local/bin/cloud-sql-proxy" ]; then
+            mkdir -p "$HOME/.local/bin"
+            curl -sSL -o "$HOME/.local/bin/cloud-sql-proxy" \
+              https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.13.0/cloud-sql-proxy.linux.amd64
+            chmod +x "$HOME/.local/bin/cloud-sql-proxy"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run alembic migrations
+        if: steps.changes.outputs.api == 'true'
+        shell: bash
+        env:
+          CLOUD_SQL_INSTANCE: ${{ vars.DEV_CLOUD_SQL_INSTANCE }}
+        run: |
+          set -euo pipefail
+          DB_PASSWORD_RAW="$(gcloud secrets versions access latest \
+            --secret=salon-db-password \
+            --project="${{ env.GCP_PROJECT_ID }}")"
+          DB_PASSWORD_ENC="$(DB_PW="$DB_PASSWORD_RAW" python3 -c \
+            'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PW"], safe=""))')"
+          echo "::add-mask::$DB_PASSWORD_RAW"
+          echo "::add-mask::$DB_PASSWORD_ENC"
+          cloud-sql-proxy --port 5433 "$CLOUD_SQL_INSTANCE" &
+          PROXY_PID=$!
+          trap "kill $PROXY_PID 2>/dev/null || true" EXIT
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/5433) 2>/dev/null; then
+              echo "Cloud SQL proxy ready after ${i}s"; break
+            fi
+            if [ "$i" = "30" ]; then echo "ERROR: proxy never ready" >&2; exit 1; fi
+            sleep 1
+          done
+          (cd backend && uv sync --frozen)
+          DATABASE_URL="postgresql+asyncpg://salon:${DB_PASSWORD_ENC}@127.0.0.1:5433/salon_lyol" \
+          CLOUD_SQL_INSTANCE="" \
+            uv run --project backend alembic upgrade head
+
+      - name: Deploy API to Cloud Run
+        if: steps.changes.outputs.api == 'true'
+        env:
+          FRONTEND_URL: ${{ vars.DEV_FRONTEND_URL }}
+          ASSETS_GCS_BUCKET: ${{ vars.DEV_ASSETS_GCS_BUCKET }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET }}
+          AUTH0_DOMAIN: ${{ vars.DEV_AUTH0_DOMAIN }}
+          AUTH0_CLIENT_ID: ${{ vars.DEV_AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.DEV_AUTH0_CLIENT_SECRET }}
+          AUTH0_CALLBACK_URL: ${{ vars.DEV_AUTH0_CALLBACK_URL }}
+        run: |
+          gcloud run services update salon-api \
+            --region ${{ env.GCP_REGION }} \
+            --remove-secrets=RESEND_WEBHOOK_SECRET \
+            --quiet 2>/dev/null || true
+
+          ENV_FLAG="--update-env-vars ENVIRONMENT=dev,FRONTEND_URL=$FRONTEND_URL,CORS_ORIGINS=$FRONTEND_URL,ASSETS_GCS_BUCKET=$ASSETS_GCS_BUCKET,RESEND_WEBHOOK_SECRET=$RESEND_WEBHOOK_SECRET,AUTH0_DOMAIN=$AUTH0_DOMAIN,AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID,AUTH0_CLIENT_SECRET=$AUTH0_CLIENT_SECRET,AUTH0_CALLBACK_URL=$AUTH0_CALLBACK_URL,RUN_SEED=false,RUN_IMPORT=false"
+
+          gcloud run deploy salon-api \
+            --image ${{ env.REGISTRY }}/salon-api:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --set-cloudsql-instances ${{ vars.DEV_CLOUD_SQL_INSTANCE }} \
+            --timeout 900 \
+            $ENV_FLAG \
+            --quiet
+
+      - name: Deploy frontend to Cloud Run
+        if: steps.changes.outputs.frontend == 'true'
+        run: |
+          gcloud run deploy salon-frontend \
+            --image ${{ env.REGISTRY }}/salon-frontend:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --quiet
+
+      - name: Print deployed URLs
+        run: |
+          echo "API:      $(gcloud run services describe salon-api --region ${{ env.GCP_REGION }} --format='value(status.url)')"
+          echo "Frontend: $(gcloud run services describe salon-frontend --region ${{ env.GCP_REGION }} --format='value(status.url)')"
