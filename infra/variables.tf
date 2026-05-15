@@ -31,6 +31,12 @@ variable "db_edition" {
   default     = "ENTERPRISE_PLUS"
 }
 
+variable "db_region" {
+  description = "Region for Cloud SQL. May differ from var.region if the primary region is rejecting new instances. Empty string = use var.region."
+  type        = string
+  default     = ""
+}
+
 variable "enable_schedulers" {
   description = "Whether to create Cloud Scheduler jobs (briefings, reminders). Disable in dev to avoid sending real emails."
   type        = bool
