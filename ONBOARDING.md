@@ -43,11 +43,18 @@ scripts/          run_briefing.py, setup_briefing_scheduler.sh, purge_since_oct2
 - Self-hosted GitHub Actions runner: `github-runner` VM
 - Dev/Claude workstation: `dev-workstation` VM
 
-## Secrets (all in GCP Secret Manager)
+## Secrets
 
-`salon-db-password`, `salon-secret-key`, `salon-admin-password`, `salon-resend-webhook-secret`
+**GCP Secret Manager:** `salon-db-password`, `salon-secret-key`, `salon-admin-password`
 
-Env vars set directly on Cloud Run (not Secret Manager):
+**GitHub Secrets (read by CI, pushed to Cloud Run as plain env vars):**
+`RESEND_WEBHOOK_SECRET`, `AUTH0_CLIENT_SECRET`, `QZ_TRAY_PRIVATE_KEY`
+— rotate these from the GitHub UI (Settings → Secrets and variables → Actions)
+or `gh secret set <name>`. To pick up the new value, push any commit that
+touches `backend/`, `migrations/`, `scripts/`, `alembic.ini`, or `.github/`
+(or trigger `Deploy to Staging` via workflow_dispatch).
+
+**Env vars set directly on Cloud Run (not Secret Manager):**
 `ANTHROPIC_API_KEY`, `INTERNAL_SECRET`, `BRIEFING_RESEND_API_KEY`,
 `BRIEFING_FROM_ADDRESS` (briefings@inbound.roux.salon),
 `BRIEFING_EMAIL_TO` (frederick.ferguson@gmail.com)
@@ -90,6 +97,23 @@ git commit --allow-empty -m "ci: redeploy after runner disk cleanup" && git push
 - P3 briefing audiences: salon_owner, stylist, client (not started)
 - QuickBooks integration: P4-1 on backlog
 - Historical payment data for year-end: Oct 2025–Apr 2026 loaded
+
+## Inbound email inbox setup (in progress — May 13 2026)
+
+Booking inbox (`/inbox`) receives emails via Resend inbound on `inbound.roux.salon`.
+
+**Status:** MX record set, webhook configured, waiting for DNS propagation (~2-3 hrs).
+
+To complete:
+1. Once MX propagates, click "Re-send email" on Gmail forwarding settings for `info@salonlyol.ca`
+2. Gmail verification email will POST to `POST /webhooks/email/inbound` 
+3. Grab confirmation code from Cloud Run logs, paste back in Gmail to activate forwarding
+
+**Config already done:**
+- Cloudflare: `inbound.roux.salon` MX → `inbound-smtp.us-east-1.amazonaws.com` (priority 10)
+- Resend: webhook `https://salon-api-qc33oa7roq-pd.a.run.app/webhooks/email/inbound` listening for `email.received`
+- Signing secret: stored as GitHub Secret `RESEND_WEBHOOK_SECRET`, pushed to Cloud Run as an env var by the deploy workflow
+- DB: `tenants.booking_inbound_address` = `booking@inbound.roux.salon`
 
 ## Recently shipped (May 2026)
 
