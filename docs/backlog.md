@@ -4,6 +4,19 @@
 
 ---
 
+## 🚧 Dev environment — pending placeholders
+
+The dev GCP project (`salon-mgmt-app-dev`) was stood up 2026-05-15. Code, CI/CD, banner, and email gating are all working — but several integrations were left with placeholder credentials so the first deploy could complete. Each item below needs real values before the corresponding feature can be tested in dev.
+
+- **`DEV_AUTH0_CLIENT_ID` and `DEV_AUTH0_CLIENT_SECRET`** — Auth0 SSO won't work in dev until these are set. Either create a separate Auth0 tenant for dev (cleanest) or reuse prod's tenant and whitelist the dev frontend URL as an additional callback. Set via `gh secret set` / `gh variable set`.
+- **`DEV_QZ_TRAY_PRIVATE_KEY`** — QZ Tray receipt printing won't sign in dev. The same cert/key as prod can be reused (the QZ Tray cert isn't environment-sensitive). Copy from GitHub secret `QZ_TRAY_PRIVATE_KEY`.
+- **`DEV_RESEND_WEBHOOK_SECRET`** — inbound email webhook signatures won't validate in dev. Only matters if you want to test the inbound email pipeline against dev. Either point Resend's webhook at the dev URL with its own signing secret, or skip — dev is fine without inbound email.
+- **Cloud SQL right-sizing** — dev is currently on `db-perf-optimized-N-2` ENTERPRISE_PLUS (~$100/mo) because shared-core `db-g1-small` ENTERPRISE was rejected by both `northamerica-northeast2` and `us-central1` on instance creation. Retry shared-core periodically; once available, downsize via Terraform (`db_tier = "db-g1-small"`, `db_edition = "ENTERPRISE"`) to drop dev cost to ~$10/mo.
+
+Everything else (Cloud SQL provisioned, migrations running in CI, env-aware DEV banner, backend `send_email()` no-op in dev, schedulers disabled in dev, `dev` branch deploy workflow) is wired up and tested.
+
+---
+
 ## Phase 1 — Core Appointment Book
 
 ### P1-0 · App shell and home dashboard · ✅ Complete
