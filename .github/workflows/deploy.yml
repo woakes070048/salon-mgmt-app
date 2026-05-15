@@ -123,11 +123,12 @@ jobs:
           AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
           AUTH0_CALLBACK_URL: ${{ vars.AUTH0_CALLBACK_URL }}
         run: |
-          # Clear any Secret Manager reference for RESEND_WEBHOOK_SECRET so it
-          # can be set as a plain env var below (conflicts otherwise).
+          # Clear RESEND_WEBHOOK_SECRET secret ref and CLOUD_SQL_INSTANCE (was
+          # accidentally set during debugging; DATABASE_URL is the correct path).
           gcloud run services update salon-api \
             --region ${{ env.GCP_REGION }} \
             --remove-secrets=RESEND_WEBHOOK_SECRET \
+            --remove-env-vars=CLOUD_SQL_INSTANCE \
             --quiet 2>/dev/null || true
 
           ENV_FLAG="--update-env-vars RUN_SEED=false,RUN_IMPORT=false"
