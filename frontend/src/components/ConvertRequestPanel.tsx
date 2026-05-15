@@ -448,13 +448,13 @@ export default function ConvertRequestPanel({ request, date, onDateChange, initi
           {clientMode === 'existing' && (
             <div className="space-y-1 pt-1">
               {selectedClient ? (
-                <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/40">
-                  <div className="text-sm">
-                    <span className="font-medium">{selectedClient.first_name} {selectedClient.last_name}</span>
-                    {selectedClient.cell_phone && <span className="text-muted-foreground ml-2">{selectedClient.cell_phone}</span>}
-                    {selectedClient.email && <span className="text-muted-foreground ml-2">{selectedClient.email}</span>}
+                <div className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 bg-muted/40">
+                  <div className="text-sm min-w-0 flex-1">
+                    <div className="font-medium truncate">{selectedClient.first_name} {selectedClient.last_name}</div>
+                    {selectedClient.cell_phone && <div className="text-muted-foreground text-xs truncate">{selectedClient.cell_phone}</div>}
+                    {selectedClient.email && <div className="text-muted-foreground text-xs truncate" title={selectedClient.email}>{selectedClient.email}</div>}
                   </div>
-                  <button onClick={() => setSelectedClient(null)} className="text-xs text-muted-foreground hover:text-foreground ml-3 shrink-0">{t('appt.change_client')}</button>
+                  <button onClick={() => setSelectedClient(null)} className="text-xs text-muted-foreground hover:text-foreground shrink-0 mt-0.5">{t('appt.change_client')}</button>
                 </div>
               ) : (
                 <>
