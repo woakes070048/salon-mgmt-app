@@ -184,6 +184,16 @@ export function diagnoseSalesSummary(start: string, end: string): Promise<Diagno
   return api.get<DiagnoseSalesSummary>(`/admin/diagnose/sales-summary?start=${start}&end=${end}`)
 }
 
+export interface BackfillSaleItemLinksResult {
+  orphans_found: number
+  linked: number
+  unmatched: number
+}
+
+export function backfillSaleItemLinks(): Promise<BackfillSaleItemLinksResult> {
+  return api.post<BackfillSaleItemLinksResult>('/admin/diagnose/backfill-sale-item-links', {})
+}
+
 // ── Legacy data import ────────────────────────────────────────────────────────
 
 export interface ImportResult {

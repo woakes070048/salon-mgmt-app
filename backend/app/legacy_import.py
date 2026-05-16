@@ -674,6 +674,54 @@ async def import_receipts(
                      " WHERE appointment_id = :id"),
                 {"id": appt_id},
             )
+
+            # Match each service receipt line to one of the existing appointment_items
+            # so the resulting sale_items can carry appointment_item_id. Without this
+            # link, per-provider reports (Payroll, Service Performance) inner-join
+            # through appointment_items and silently drop the row. See P-IMPORT-LINK.
+            existing_ai_rows = (await db.execute(
+                text("SELECT id, service_id, provider_id, sequence FROM appointment_items"
+                     " WHERE appointment_id = :id ORDER BY sequence"),
+                {"id": appt_id},
+            )).fetchall()
+            # Pool keyed by (provider_id, service_id) → consumable list of ai_ids in
+            # sequence order. Duplicates (e.g. two haircuts by Sarah) are matched FIFO.
+            ai_pool: dict[tuple, list[uuid.UUID]] = {}
+            for r in existing_ai_rows:
+                ai_pool.setdefault((r.provider_id, r.service_id), []).append(r.id)
+            # Fallback pool keyed by service_id alone, for receipts where the staff
+            # column doesn't match the booked provider (mistakes happen).
+            svc_only_pool: dict[uuid.UUID, list[uuid.UUID]] = {}
+            for r in existing_ai_rows:
+                svc_only_pool.setdefault(r.service_id, []).append(r.id)
+
+            for idx, item in enumerate(items):
+                desc = (item.get("Description") or "").strip()
+                if not _is_service(desc):
+                    continue
+                db_code = RECEIPT_SERVICE_MAP.get(desc.lower())
+                svc = service_detail.get(db_code.lower()) if db_code else None
+                if not svc:
+                    continue
+                staff = (item.get("Staff") or "").strip().upper()
+                receipt_prov = provider_map.get(staff) if staff else None
+                svc_id = svc["id"]
+                key = (receipt_prov, svc_id)
+                if key in ai_pool and ai_pool[key]:
+                    ai_id = ai_pool[key].pop(0)
+                    # Also remove from the service-only fallback so it isn't reused.
+                    svc_only_pool.get(svc_id, []).remove(ai_id)
+                elif svc_id in svc_only_pool and svc_only_pool[svc_id]:
+                    ai_id = svc_only_pool[svc_id].pop(0)
+                    # Remove from the (prov, svc) pool too if present under any key.
+                    for v in ai_pool.values():
+                        if ai_id in v:
+                            v.remove(ai_id)
+                            break
+                else:
+                    continue
+                receipt_item_to_appt_item[idx] = ai_id
+
             updated += 1
         else:
             # No prior booking record — create a new completed appointment (historical data)
@@ -738,8 +786,10 @@ async def import_receipts(
             qty = int(item.get("Quantity") or 1)
             kind = "service" if _is_service(desc) else "retail"
             provider_id = provider_map.get(staff) if staff else None
-            # Only link to appointment_item when we created them (new appointment path)
-            ai_id = receipt_item_to_appt_item.get(idx) if not use_existing else None
+            # Linked for both branches: new-appointment path populates the dict at
+            # insert time; use_existing path populates it via best-effort matching
+            # against existing appointment_items above (P-IMPORT-LINK).
+            ai_id = receipt_item_to_appt_item.get(idx)
             # Milano exports Amount as the LINE TOTAL, not unit price (confirmed by GST pattern).
             line_total = Decimal(str(round(amount, 2)))
             unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total

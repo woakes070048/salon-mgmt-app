@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileText, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, diagnoseSalesSummary, type ImportResult, type ZeroApptPreview, type DiagnoseSalesSummary } from '@/api/admin'
+import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, diagnoseSalesSummary, backfillSaleItemLinks, type ImportResult, type ZeroApptPreview, type DiagnoseSalesSummary, type BackfillSaleItemLinksResult } from '@/api/admin'
 
 const FILES = [
   { key: 'clients_csv',          labelKey: 'import.client_details',          hint: 'Client Details.txt',            required: true  },
@@ -253,6 +253,8 @@ function DiagnoseSales() {
   const [data, setData] = useState<DiagnoseSalesSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillResult, setBackfillResult] = useState<BackfillSaleItemLinksResult | null>(null)
 
   async function run() {
     setLoading(true); setError(null); setData(null)
@@ -262,6 +264,21 @@ function DiagnoseSales() {
       setError(e instanceof Error ? e.message : 'Failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function runBackfill() {
+    if (!confirm('Link orphaned service sale_items to appointment_items across the whole tenant? This rewrites sale_items.appointment_item_id for matched rows.')) return
+    setBackfilling(true); setError(null); setBackfillResult(null)
+    try {
+      const r = await backfillSaleItemLinks()
+      setBackfillResult(r)
+      // Refresh the current diagnose view so the user sees the effect.
+      if (data) setData(await diagnoseSalesSummary(start, end))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backfill failed')
+    } finally {
+      setBackfilling(false)
     }
   }
 
@@ -286,9 +303,18 @@ function DiagnoseSales() {
         <Button onClick={run} disabled={loading} size="sm">
           {loading ? 'Running…' : 'Diagnose'}
         </Button>
+        <Button onClick={runBackfill} disabled={backfilling} size="sm" variant="outline">
+          {backfilling ? 'Linking…' : 'Backfill appt links'}
+        </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {backfillResult && (
+        <p className="text-sm mb-3">
+          Backfill: found {backfillResult.orphans_found}, linked {backfillResult.linked}, unmatched {backfillResult.unmatched}.
+        </p>
+      )}
 
       {data && (
         <div className="space-y-4">

@@ -2105,3 +2105,19 @@ Deliberately *not* in MVP (skipped from the Milano report):
 **Phase 3:** scheduled monthly email through the Briefing Engine (`salon_owner` audience).
 
 **Depends on:** None — standalone.
+
+### P-IMPORT-LINK · Legacy import: link sale_items to existing appointment_items · Dev complete
+
+**Bug surfaced by:** `Diagnose missing sales` (May 7–13, 2026) — every imported receipt in the range shows `appointment_item_id IS NULL`, so per-provider Payroll and Service Performance reports drop them via the inner join on `appointment_items` ([reports.py:642](backend/app/routers/reports.py#L642), [:881](backend/app/routers/reports.py#L881)).
+
+**Root cause:** In [legacy_import.py:742](backend/app/legacy_import.py#L742), when the importer matches a Milano receipt to an existing confirmed appointment (`use_existing=True`), it writes `appointment_item_id = NULL` on every sale_item — the `receipt_item_to_appt_item` dict is only populated in the new-appointment branch ([:702–714](backend/app/legacy_import.py#L702-L714)). Comment said "Only link to appointment_item when we created them" but there's no real reason for that — existing appointment_items can absolutely be linked.
+
+**Fix:**
+1. In the `use_existing` branch, load the existing appointment_items for the appointment and build `receipt_item_to_appt_item` by best-effort matching (provider + service description / sequence).
+2. Drop the `if not use_existing else None` guard on line 742 so the link is written for both paths.
+
+**Backfill:** one-shot admin endpoint that, for every `sale_item WHERE appointment_item_id IS NULL AND kind = 'service'`, joins through `sale_appointments` to find the appointment, then matches by (provider_id + sequence) — fall back to (provider_id + description). Reports a count of linked / unmatched.
+
+**Verification:** rerun `/admin/diagnose/sales-summary` for May 7–13; expect 0 rows with "YES". Then load Service Performance for an affected provider/range; expect the totals to match the sales admin grid.
+
+**Depends on:** existing legacy_import.py and diagnose endpoint.

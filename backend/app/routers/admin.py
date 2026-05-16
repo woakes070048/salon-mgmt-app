@@ -915,3 +915,95 @@ async def diagnose_sales_summary(
             for r in rows
         ],
     }
+
+
+# ── Backfill: link orphaned service sale_items to appointment_items ───────────
+# Companion to the legacy_import P-IMPORT-LINK fix. For each completed sale_item
+# of kind='service' with appointment_item_id IS NULL, walk sale_appointments to
+# the linked appointment, then match by (provider_id, service_id) — FIFO — and
+# fall back to (service_id) alone if the staff column on the receipt didn't
+# match the booked provider.
+
+@router.post("/diagnose/backfill-sale-item-links")
+async def backfill_sale_item_links(current_user: AdminUser, db: AsyncSession = Depends(get_db)) -> dict:
+    from sqlalchemy import text as _text
+
+    tid = current_user.tenant_id
+
+    orphans = (await db.execute(
+        _text("""
+            SELECT si.id AS si_id, si.provider_id AS si_prov, si.description AS si_desc,
+                   sa.appointment_id AS appt_id
+            FROM sale_items si
+            JOIN sales s ON s.id = si.sale_id
+            JOIN sale_appointments sa ON sa.sale_id = si.sale_id
+            WHERE si.tenant_id = :tid
+              AND si.kind::text = 'service'
+              AND si.appointment_item_id IS NULL
+              AND s.status::text = 'completed'
+            ORDER BY sa.appointment_id, si.sequence
+        """),
+        {"tid": tid},
+    )).fetchall()
+
+    if not orphans:
+        return {"orphans_found": 0, "linked": 0, "unmatched": 0}
+
+    # Group orphans by appointment so we can consume each appointment_item once.
+    by_appt: dict[uuid.UUID, list] = {}
+    for o in orphans:
+        by_appt.setdefault(o.appt_id, []).append(o)
+
+    # Resolve service descriptions on the orphan sale_items to a service_id via
+    # services.name (case-insensitive). The importer snapshots the service name
+    # into sale_items.description at create time.
+    svc_rows = (await db.execute(
+        _text("SELECT id, name FROM services WHERE tenant_id = :tid"),
+        {"tid": tid},
+    )).fetchall()
+    svc_id_by_name: dict[str, uuid.UUID] = {r.name.strip().lower(): r.id for r in svc_rows}
+
+    linked = 0
+    unmatched = 0
+
+    for appt_id, group in by_appt.items():
+        ai_rows = (await db.execute(
+            _text("SELECT id, service_id, provider_id FROM appointment_items"
+                  " WHERE appointment_id = :id ORDER BY sequence"),
+            {"id": appt_id},
+        )).fetchall()
+        ai_pool: dict[tuple, list[uuid.UUID]] = {}
+        svc_only_pool: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for r in ai_rows:
+            ai_pool.setdefault((r.provider_id, r.service_id), []).append(r.id)
+            svc_only_pool.setdefault(r.service_id, []).append(r.id)
+
+        for o in group:
+            svc_id = svc_id_by_name.get((o.si_desc or "").strip().lower())
+            if not svc_id:
+                unmatched += 1
+                continue
+            key = (o.si_prov, svc_id)
+            ai_id = None
+            if key in ai_pool and ai_pool[key]:
+                ai_id = ai_pool[key].pop(0)
+                svc_only_pool.get(svc_id, []).remove(ai_id)
+            elif svc_id in svc_only_pool and svc_only_pool[svc_id]:
+                ai_id = svc_only_pool[svc_id].pop(0)
+                for v in ai_pool.values():
+                    if ai_id in v:
+                        v.remove(ai_id)
+                        break
+            if ai_id is None:
+                unmatched += 1
+                continue
+            await db.execute(
+                _text("UPDATE sale_items SET appointment_item_id = :ai, updated_at = NOW()"
+                      " WHERE id = :si"),
+                {"ai": ai_id, "si": o.si_id},
+            )
+            linked += 1
+
+    await db.commit()
+
+    return {"orphans_found": len(orphans), "linked": linked, "unmatched": unmatched}
