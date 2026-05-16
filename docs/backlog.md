@@ -2106,7 +2106,7 @@ Deliberately *not* in MVP (skipped from the Milano report):
 
 **Depends on:** None — standalone.
 
-### P-IMPORT-LINK · Legacy import: link sale_items to existing appointment_items · Dev complete
+### P-IMPORT-LINK · Legacy import: link sale_items to existing appointment_items · Committed
 
 **Bug surfaced by:** `Diagnose missing sales` (May 7–13, 2026) — every imported receipt in the range shows `appointment_item_id IS NULL`, so per-provider Payroll and Service Performance reports drop them via the inner join on `appointment_items` ([reports.py:642](backend/app/routers/reports.py#L642), [:881](backend/app/routers/reports.py#L881)).
 
