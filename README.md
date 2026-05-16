@@ -254,7 +254,12 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 ## Architecture
 
-Two Cloud Run services (API + frontend) backed by Cloud SQL PostgreSQL. Secrets are injected via Secret Manager — no plaintext in containers or environment files. The API runs Alembic migrations automatically on startup, so every deploy is schema-current.
+Two Cloud Run services (API + frontend) backed by Cloud SQL PostgreSQL, replicated across **two isolated GCP projects**:
+
+- **Prod** (`salon-mgmt-app-2026`) — deploys from `main` branch
+- **Dev** (`salon-mgmt-app-dev`) — deploys from `dev` branch, with a yellow `DEV ENVIRONMENT` banner across the top of every page and `send_email()` short-circuited as a no-op so dev cannot send real client mail
+
+Secrets are injected via Secret Manager — no plaintext in containers or environment files. Alembic migrations run as a dedicated CI step before the new Cloud Run revision is deployed (not at container startup), so a failing migration blocks the deploy rather than killing the running revision.
 
 ```
 Guest (salonlyol.ca)        Staff browser        Inbound email
@@ -279,7 +284,7 @@ Guest (salonlyol.ca)        Staff browser        Inbound email
   (Claude Sonnet + Haiku)
 ```
 
-The frontend is a single-page app served from Nginx; all data flows through the FastAPI backend. The public booking form and staff application share the same API — access is scoped by JWT role. Cloud Scheduler triggers reminder dispatch and daily briefings.
+The frontend is a single-page app served from Nginx; all data flows through the FastAPI backend. The public booking form and staff application share the same API — access is scoped by JWT role. Cloud Scheduler triggers reminder dispatch and daily briefings (prod only — dev disables schedulers).
 
 ---
 
