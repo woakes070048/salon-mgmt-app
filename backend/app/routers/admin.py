@@ -856,30 +856,43 @@ async def diagnose_sales_summary(
     end: str = "2026-05-13",
 ) -> dict:
     from sqlalchemy import text as _text
+    from datetime import date as _date
+    import traceback
+
     tid = current_user.tenant_id
+    start_d = _date.fromisoformat(start)
+    end_d = _date.fromisoformat(end)
 
-    rows = (await db.execute(
-        _text("""
-            SELECT
-                s.completed_at::date          AS day,
-                COALESCE(p.display_name, '<NO PROVIDER>') AS provider,
-                si.provider_id IS NULL        AS provider_is_null,
-                si.appointment_item_id IS NULL AS appt_item_id_is_null,
-                si.kind                       AS kind,
-                COUNT(*)                      AS items
-            FROM sale_items si
-            JOIN sales s ON s.id = si.sale_id
-            LEFT JOIN providers p ON p.id = si.provider_id
-            WHERE si.tenant_id = :tid
-              AND s.completed_at::date BETWEEN :start AND :end
-              AND s.status = 'completed'
-            GROUP BY 1, 2, 3, 4, 5
-            ORDER BY 1, 2, 5
-        """),
-        {"tid": tid, "start": start, "end": end},
-    )).fetchall()
+    try:
+        rows = (await db.execute(
+            _text("""
+                SELECT
+                    s.completed_at::date          AS day,
+                    COALESCE(p.display_name, '<NO PROVIDER>') AS provider,
+                    si.provider_id IS NULL        AS provider_is_null,
+                    si.appointment_item_id IS NULL AS appt_item_id_is_null,
+                    si.kind::text                 AS kind,
+                    COUNT(*)                      AS items
+                FROM sale_items si
+                JOIN sales s ON s.id = si.sale_id
+                LEFT JOIN providers p ON p.id = si.provider_id
+                WHERE si.tenant_id = :tid
+                  AND s.completed_at::date BETWEEN :start_d AND :end_d
+                  AND s.status::text = 'completed'
+                GROUP BY 1, 2, 3, 4, 5
+                ORDER BY 1, 2, 5
+            """),
+            {"tid": tid, "start_d": start_d, "end_d": end_d},
+        )).fetchall()
+    except Exception as e:
+        return {
+            "range": {"start": start, "end": end},
+            "error": f"{type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+            "providers": [],
+            "items": [],
+        }
 
-    # Also: list current providers so we can confirm Sarah's display name
     providers = (await db.execute(
         _text("SELECT id, display_name FROM providers WHERE tenant_id = :tid ORDER BY display_name"),
         {"tid": tid},
