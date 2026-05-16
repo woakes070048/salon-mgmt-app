@@ -840,3 +840,65 @@ async def list_historical_payments(
                              amount=float(r.amount), source=r.source)
         for r in rows
     ]
+
+
+# ── Diagnostic: explain why sale_items don't show up in payroll/perf reports ──
+# Used to chase down the "Sarah's data ends May 6 even though receipts are in
+# the DB" issue. Returns per-(date, provider, has_appt_item_id) counts so we
+# can tell whether the data is missing, mis-attributed, or orphaned from
+# appointment_items (which the report inner-joins).
+
+@router.get("/diagnose/sales-summary")
+async def diagnose_sales_summary(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+    start: str = "2026-05-07",
+    end: str = "2026-05-13",
+) -> dict:
+    from sqlalchemy import text as _text
+    tid = current_user.tenant_id
+
+    rows = (await db.execute(
+        _text("""
+            SELECT
+                s.completed_at::date          AS day,
+                COALESCE(p.display_name, '<NO PROVIDER>') AS provider,
+                si.provider_id IS NULL        AS provider_is_null,
+                si.appointment_item_id IS NULL AS appt_item_id_is_null,
+                si.kind                       AS kind,
+                COUNT(*)                      AS items
+            FROM sale_items si
+            JOIN sales s ON s.id = si.sale_id
+            LEFT JOIN providers p ON p.id = si.provider_id
+            WHERE si.tenant_id = :tid
+              AND s.completed_at::date BETWEEN :start AND :end
+              AND s.status = 'completed'
+            GROUP BY 1, 2, 3, 4, 5
+            ORDER BY 1, 2, 5
+        """),
+        {"tid": tid, "start": start, "end": end},
+    )).fetchall()
+
+    # Also: list current providers so we can confirm Sarah's display name
+    providers = (await db.execute(
+        _text("SELECT id, display_name FROM providers WHERE tenant_id = :tid ORDER BY display_name"),
+        {"tid": tid},
+    )).fetchall()
+
+    return {
+        "range": {"start": start, "end": end},
+        "providers": [
+            {"id": str(r.id), "display_name": r.display_name} for r in providers
+        ],
+        "items": [
+            {
+                "day": r.day.isoformat() if r.day else None,
+                "provider": r.provider,
+                "provider_is_null": bool(r.provider_is_null),
+                "appt_item_id_is_null": bool(r.appt_item_id_is_null),
+                "kind": str(r.kind),
+                "items": int(r.items),
+            }
+            for r in rows
+        ],
+    }
