@@ -1990,7 +1990,7 @@ Logged-in clients can see past online orders.
 
 **API:** `GET /shop/orders/mine` — returns orders where `client_id` matches the logged-in user's linked client record.
 
-### P-PAYROLL-1 · Product fee effective-date history ⚠️ HIGH PRIORITY (parallel run)
+### P-PAYROLL-1 · Product fee effective-date history ⚠️ HIGH PRIORITY (parallel run) · In progress
 
 **The problem:** The payroll report always uses the *current* catalog product fee. A fee change made after a pay period closes will retroactively affect that period's report. Example: Olaplex 10% fee was added after April 15 but showed up in the March 16 – April 15 payroll run, causing a $3.50 discrepancy vs. Milano.
 

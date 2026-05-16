@@ -10,6 +10,7 @@ DELETE /services/{id}              — soft delete (admin) — sets is_active=fa
 """
 import re
 import uuid
+from datetime import date as ddate
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import AdminUser, CurrentUser, ResolvedLanguage
 from app.models.i18n import ServiceCategoryTranslation, ServiceTranslation
-from app.models.service import PricingType, Service, ServiceCategory
+from app.models.service import PricingType, Service, ServiceCategory, ServiceFeeHistory
 
 router = APIRouter(prefix="/services", tags=["services"])
 
@@ -338,6 +339,16 @@ async def create_service(
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A service with that code already exists")
 
+    # Seed initial fee history row so payroll lookups always find a value
+    db.add(ServiceFeeHistory(
+        tenant_id=tid,
+        service_id=svc.id,
+        effective_from=ddate.today(),
+        product_fee=svc.default_cost,
+        is_cost_percent=svc.is_cost_percent,
+        created_by_user_id=current_user.id,
+    ))
+
     # Seed English translation from canonical fields
     extra = (body.translations or {}).get("en", ServiceTranslationData())
     await _upsert_translation(db, tid, svc.id, "en", ServiceTranslationData(
@@ -374,10 +385,31 @@ async def update_service(
     tid = current_user.tenant_id
     svc, _, _, _ = await _load_with_category(uuid.UUID(service_id), tid, db, language)
 
+    # Snapshot pre-patch fee values so we can detect a change and write history
+    prev_default_cost = svc.default_cost
+    prev_is_cost_percent = svc.is_cost_percent
+
     canonical_fields = {f for f in body.model_fields_set if f != "translations" and f != "category_id"}
     for field in canonical_fields:
         value = getattr(body, field)
         setattr(svc, field, value)
+
+    # If product_fee or is_cost_percent changed, append a new history row.
+    # effective_from = today; payroll lookups for periods ending before today
+    # will continue to use the prior row (correct historical behaviour).
+    fee_changed = (
+        ("default_cost" in body.model_fields_set and svc.default_cost != prev_default_cost)
+        or ("is_cost_percent" in body.model_fields_set and svc.is_cost_percent != prev_is_cost_percent)
+    )
+    if fee_changed:
+        db.add(ServiceFeeHistory(
+            tenant_id=tid,
+            service_id=svc.id,
+            effective_from=ddate.today(),
+            product_fee=svc.default_cost,
+            is_cost_percent=svc.is_cost_percent,
+            created_by_user_id=current_user.id,
+        ))
 
     if "category_id" in body.model_fields_set and body.category_id is not None:
         cat = (
@@ -435,3 +467,41 @@ async def deactivate_service(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     row.is_active = False
     await db.commit()
+
+
+# ── Fee history (P-PAYROLL-1) ────────────────────────────────────────────────
+
+
+class FeeHistoryRow(BaseModel):
+    effective_from: str
+    product_fee: str | None
+    is_cost_percent: bool
+    changed_by_user_id: str | None
+
+
+@router.get("/{service_id}/fee-history", response_model=list[FeeHistoryRow])
+async def get_service_fee_history(
+    service_id: str,
+    current_user: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[FeeHistoryRow]:
+    """Return the last 10 fee changes for a service, most recent first."""
+    rows = (await db.execute(
+        select(ServiceFeeHistory)
+        .where(
+            ServiceFeeHistory.service_id == uuid.UUID(service_id),
+            ServiceFeeHistory.tenant_id == current_user.tenant_id,
+        )
+        .order_by(ServiceFeeHistory.effective_from.desc(),
+                  ServiceFeeHistory.created_at.desc())
+        .limit(10)
+    )).scalars().all()
+    return [
+        FeeHistoryRow(
+            effective_from=r.effective_from.isoformat(),
+            product_fee=str(r.product_fee) if r.product_fee is not None else None,
+            is_cost_percent=r.is_cost_percent,
+            changed_by_user_id=str(r.created_by_user_id) if r.created_by_user_id else None,
+        )
+        for r in rows
+    ]

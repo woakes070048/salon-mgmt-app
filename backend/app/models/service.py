@@ -1,6 +1,8 @@
 import enum
+import uuid
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Enum, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import ForeignKey
@@ -56,4 +58,28 @@ class Service(TenantScopedBase):
     is_complimentary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     required_station_type: Mapped[TenantStationType | None] = mapped_column(
         Enum(TenantStationType, name="tenantstation_type", create_type=False), nullable=True
+    )
+
+
+class ServiceFeeHistory(TenantScopedBase):
+    """Snapshot of (default_cost, is_cost_percent) for a service at a point in time.
+
+    Each row's `effective_from` is the start of the period during which these
+    values applied. The payroll calculator looks up the row with the latest
+    `effective_from <= period_end` for each service to ensure historical
+    payroll runs are not retroactively distorted by present-day fee changes.
+
+    Written automatically on service create and on PATCH /services/{id} when
+    `default_cost` or `is_cost_percent` changes.
+    """
+    __tablename__ = "service_fee_history"
+
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("services.id"), nullable=False, index=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    product_fee: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    is_cost_percent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )

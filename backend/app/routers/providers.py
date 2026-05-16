@@ -248,7 +248,7 @@ async def _calc_payroll_line(
     from sqlalchemy import func, cast, Date as SADate
     from app.models.appointment import AppointmentItem
     from app.models.sale import Sale, SaleItem, SaleItemKind, SaleStatus
-    from app.models.service import Service, ServiceCategory
+    from app.models.service import Service, ServiceCategory, ServiceFeeHistory
     from app.models.provider_service_price import ProviderServicePrice
     from app.models.schedule import ProviderSchedule, ProviderScheduleException
 
@@ -273,6 +273,31 @@ async def _calc_payroll_line(
             psp_price_map[sid] = float(r.price)
 
     # ── Service revenue ───────────────────────────────────────────────────────
+    # P-PAYROLL-1: read product fee from service_fee_history at period_end so
+    # historical payroll runs are not retroactively distorted by present-day
+    # fee changes. DISTINCT ON returns the most recent applicable row per
+    # service. Falls back to the service's current values via COALESCE in case
+    # a service has no history row (defensive — the migration backfills all
+    # existing services on upgrade).
+    fee_subq = (
+        select(
+            ServiceFeeHistory.service_id.label("svc_id"),
+            ServiceFeeHistory.product_fee.label("hist_fee"),
+            ServiceFeeHistory.is_cost_percent.label("hist_is_pct"),
+        )
+        .where(
+            ServiceFeeHistory.tenant_id == tid,
+            ServiceFeeHistory.effective_from <= period_end,
+        )
+        .order_by(
+            ServiceFeeHistory.service_id,
+            ServiceFeeHistory.effective_from.desc(),
+            ServiceFeeHistory.created_at.desc(),
+        )
+        .distinct(ServiceFeeHistory.service_id)
+        .subquery()
+    )
+
     service_rows = (
         await db.execute(
             select(
@@ -282,14 +307,15 @@ async def _calc_payroll_line(
                 SaleItem.is_business_reimbursed,
                 ServiceCategory.name.label("cat_name"),
                 Service.id.label("service_id"),
-                Service.default_cost.label("default_cost"),
+                func.coalesce(fee_subq.c.hist_fee, Service.default_cost).label("default_cost"),
                 Service.default_price.label("default_price"),
-                Service.is_cost_percent.label("is_cost_percent"),
+                func.coalesce(fee_subq.c.hist_is_pct, Service.is_cost_percent).label("is_cost_percent"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
             .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
             .join(Service, Service.id == AppointmentItem.service_id)
             .join(ServiceCategory, ServiceCategory.id == Service.category_id)
+            .outerjoin(fee_subq, fee_subq.c.svc_id == Service.id)
             .where(
                 SaleItem.tenant_id == tid,
                 SaleItem.provider_id == pid,
