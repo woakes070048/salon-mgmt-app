@@ -1,4 +1,4 @@
-name: Deploy to Staging
+name: Deploy to Prod
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 # Cancel any in-progress run when a new push arrives — only the latest commit deploys.
 concurrency:
-  group: deploy-staging
+  group: deploy-prod
   cancel-in-progress: true
 
 env:
