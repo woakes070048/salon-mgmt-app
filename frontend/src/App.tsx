@@ -25,6 +25,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 import AppShell from '@/components/AppShell'
+import DevBanner from '@/components/DevBanner'
 import LandingPage from '@/pages/LandingPage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
@@ -73,6 +74,7 @@ function RequireGuest({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ErrorBoundary>
+    <DevBanner />
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
