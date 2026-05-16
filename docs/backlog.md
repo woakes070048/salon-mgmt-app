@@ -2080,7 +2080,7 @@ is_cost_percent = fee_row.is_cost_percent if fee_row else service.is_cost_percen
 
 **Depends on:** None — standalone.
 
-### P-PERF-1 · Service Performance Report (per-provider) · Dev complete
+### P-PERF-1 · Service Performance Report (per-provider) · Committed
 
 A stylist performance review — modeled on the legacy Milano "Service Performance Report" but trimmed to the sections Freddy actually uses. Owner-facing on the Reports tab, one report per provider per date range.
 
