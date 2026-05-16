@@ -49,6 +49,7 @@ import RetailPage from '@/pages/RetailPage'
 import ReportsPage from '@/pages/ReportsPage'
 import TransactionReportPage from '@/pages/TransactionReportPage'
 import PayrollDetailPage from '@/pages/PayrollDetailPage'
+import ServicePerformanceReportPage from '@/pages/ServicePerformanceReportPage'
 import DataImportPage from '@/pages/DataImportPage'
 import LoginLogsPage from '@/pages/LoginLogsPage'
 import OAuthCallbackPage from '@/pages/OAuthCallbackPage'
@@ -107,6 +108,7 @@ export default function App() {
         <Route path="/reports/sales" element={<ReportsPage />} />
         <Route path="/reports/transactions" element={<TransactionReportPage />} />
         <Route path="/reports/payroll-detail" element={<PayrollDetailPage />} />
+        <Route path="/reports/service-performance" element={<ServicePerformanceReportPage />} />
         <Route path="/reports/payroll" element={<PayrollReportPage />} />
         <Route path="/reports/petty-cash" element={<PettyCashReportPage />} />
         <Route path="/payroll" element={<Navigate to="/reports/payroll" replace />} />

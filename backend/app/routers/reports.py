@@ -793,3 +793,198 @@ async def payroll_detail_report(
         vacation_pay=_d(vac_pay),
         gross_pay=_d(gross_pay),
     )
+
+
+# ── GET /reports/service-performance ──────────────────────────────────────────
+# P-PERF-1: per-provider service performance for owner review.
+# Modelled on Milano's "Service Performance Report" — service mix, retail
+# summary, receipt analysis. No commission info (lives in PayrollDetail).
+
+class ServicePerformanceServiceRow(BaseModel):
+    service_name: str
+    total_sales: str        # sum of line_total
+    sales_count: int        # sum of quantity (returns subtract)
+    average_price: str      # total_sales / sales_count (0 if count == 0)
+    pct_of_sales: str       # total_sales / total_service_sales * 100
+    pct_of_count: str       # sales_count / total_service_count * 100
+
+
+class ServicePerformanceReport(BaseModel):
+    provider_id: str
+    provider_name: str
+    period_start: str
+    period_end: str
+    # Per-service breakdown (sorted by total_sales desc)
+    service_rows: list[ServicePerformanceServiceRow]
+    # Totals
+    total_service_sales: str
+    total_service_count: int
+    average_service_price: str
+    total_retail_sales: str
+    total_retail_count: int
+    average_retail_price: str
+    total_sales: str        # service + retail
+    # Ratios (percent)
+    pct_service_of_total: str
+    pct_retail_of_total: str
+    pct_retail_of_service: str
+    # Receipt analysis
+    receipt_count: int
+    clients_serviced: int
+    avg_per_receipt: str
+    items_per_receipt: str
+
+
+@router.get("/service-performance", response_model=ServicePerformanceReport)
+async def service_performance_report(
+    current_user: StaffUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    provider_id: str = Query(...),
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end: str = Query(..., description="YYYY-MM-DD"),
+) -> ServicePerformanceReport:
+    from datetime import date as _date
+    from decimal import Decimal as D
+    from app.models.client import Client
+    from app.models.appointment import AppointmentItem
+    from app.models.service import Service
+    from sqlalchemy import cast
+    from sqlalchemy.types import Date as SADate
+    from fastapi import HTTPException
+
+    tid = current_user.tenant_id
+    pid = uuid.UUID(provider_id)
+    period_start = _date.fromisoformat(start)
+    period_end = _date.fromisoformat(end)
+
+    p = (await db.execute(
+        select(Provider).where(Provider.id == pid, Provider.tenant_id == tid)
+    )).scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # Milano-imported returns: quantity < 0 but line_total > 0. Flip the sign on
+    # line_total when quantity is negative so returns net against sales.
+    signed_line_total = case(
+        (SaleItem.quantity < 0, -func.abs(SaleItem.line_total)),
+        else_=SaleItem.line_total,
+    )
+
+    # Service rows aggregated by service.
+    svc_agg_rows = (await db.execute(
+        select(
+            Service.name.label("service_name"),
+            func.coalesce(func.sum(signed_line_total), 0).label("total"),
+            func.coalesce(func.sum(SaleItem.quantity), 0).label("count"),
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
+        .join(Service, Service.id == AppointmentItem.service_id)
+        .where(
+            SaleItem.tenant_id == tid,
+            SaleItem.provider_id == pid,
+            SaleItem.kind == SaleItemKind.service,
+            Sale.status == SaleStatus.completed,
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+        )
+        .group_by(Service.name)
+    )).all()
+
+    total_service = D("0")
+    total_count = 0
+    for r in svc_agg_rows:
+        total_service += D(str(r.total))
+        total_count += int(r.count)
+
+    service_rows: list[ServicePerformanceServiceRow] = []
+    for r in svc_agg_rows:
+        total = D(str(r.total))
+        cnt = int(r.count)
+        avg = total / D(cnt) if cnt else D("0")
+        pct_sales = (total / total_service * D("100")) if total_service else D("0")
+        pct_count = (D(cnt) / D(total_count) * D("100")) if total_count else D("0")
+        service_rows.append(ServicePerformanceServiceRow(
+            service_name=r.service_name,
+            total_sales=_d(total),
+            sales_count=cnt,
+            average_price=_d(avg.quantize(D("0.01"))),
+            pct_of_sales=_d(pct_sales.quantize(D("0.1"))),
+            pct_of_count=_d(pct_count.quantize(D("0.1"))),
+        ))
+    service_rows.sort(key=lambda x: float(x.total_sales), reverse=True)
+
+    # Retail totals from this provider's retail sale items.
+    retail_row = (await db.execute(
+        select(
+            func.coalesce(func.sum(signed_line_total), 0).label("total"),
+            func.coalesce(func.sum(SaleItem.quantity), 0).label("count"),
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .where(
+            SaleItem.tenant_id == tid,
+            SaleItem.provider_id == pid,
+            SaleItem.kind == SaleItemKind.retail,
+            Sale.status == SaleStatus.completed,
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+            ~func.lower(SaleItem.description).contains("gift card"),
+            ~func.lower(SaleItem.description).contains("gift certificate"),
+        )
+    )).one()
+    total_retail = D(str(retail_row.total))
+    retail_count = int(retail_row.count)
+
+    grand_total = total_service + total_retail
+    avg_service = (total_service / D(total_count)) if total_count else D("0")
+    avg_retail = (total_retail / D(retail_count)) if retail_count else D("0")
+    pct_svc = (total_service / grand_total * D("100")) if grand_total else D("0")
+    pct_ret = (total_retail / grand_total * D("100")) if grand_total else D("0")
+    pct_ret_svc = (total_retail / total_service * D("100")) if total_service else D("0")
+
+    # Receipt analysis — count distinct sales and distinct clients on this
+    # provider's completed service work in the period. Plus item count for
+    # items/receipt = (service_count + retail_count) / receipt_count.
+    sale_stats = (await db.execute(
+        select(
+            func.count(func.distinct(Sale.id)).label("receipts"),
+            func.count(func.distinct(Sale.client_id)).label("clients"),
+        )
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .where(
+            SaleItem.tenant_id == tid,
+            SaleItem.provider_id == pid,
+            SaleItem.kind == SaleItemKind.service,
+            Sale.status == SaleStatus.completed,
+            cast(Sale.completed_at, SADate) >= period_start,
+            cast(Sale.completed_at, SADate) <= period_end,
+        )
+    )).one()
+    receipt_count = int(sale_stats.receipts)
+    clients_serviced = int(sale_stats.clients)
+    avg_per_receipt = (grand_total / D(receipt_count)) if receipt_count else D("0")
+    items_per_receipt = (
+        D(total_count + retail_count) / D(receipt_count) if receipt_count else D("0")
+    )
+
+    return ServicePerformanceReport(
+        provider_id=str(pid),
+        provider_name=p.display_name or f"{p.first_name} {p.last_name}",
+        period_start=start,
+        period_end=end,
+        service_rows=service_rows,
+        total_service_sales=_d(total_service.quantize(D("0.01"))),
+        total_service_count=total_count,
+        average_service_price=_d(avg_service.quantize(D("0.01"))),
+        total_retail_sales=_d(total_retail.quantize(D("0.01"))),
+        total_retail_count=retail_count,
+        average_retail_price=_d(avg_retail.quantize(D("0.01"))),
+        total_sales=_d(grand_total.quantize(D("0.01"))),
+        pct_service_of_total=_d(pct_svc.quantize(D("0.1"))),
+        pct_retail_of_total=_d(pct_ret.quantize(D("0.1"))),
+        pct_retail_of_service=_d(pct_ret_svc.quantize(D("0.1"))),
+        receipt_count=receipt_count,
+        clients_serviced=clients_serviced,
+        avg_per_receipt=_d(avg_per_receipt.quantize(D("0.01"))),
+        items_per_receipt=_d(items_per_receipt.quantize(D("0.01"))),
+    )

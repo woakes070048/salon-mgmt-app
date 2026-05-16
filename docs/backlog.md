@@ -2079,3 +2079,29 @@ is_cost_percent = fee_row.is_cost_percent if fee_row else service.is_cost_percen
 **Workaround until built:** Manually zero the product fee on the affected sale item via the Sales edit UI. The sale audit log records the change.
 
 **Depends on:** None — standalone.
+
+### P-PERF-1 · Service Performance Report (per-provider) · Dev complete
+
+A stylist performance review — modeled on the legacy Milano "Service Performance Report" but trimmed to the sections Freddy actually uses. Owner-facing on the Reports tab, one report per provider per date range.
+
+**Sections (MVP):**
+- Service breakdown table: service name, total sales, count, average price, % of sales, % of count.
+- Retail summary: total retail sales, count, average.
+- Receipt analysis: # receipts, # clients serviced, avg/receipt, items/receipt.
+- Ratios: % service of total, % retail of total, % retail of service.
+
+Deliberately *not* in MVP (skipped from the Milano report):
+- Performance stats (per Hour / Day / Week / Month) — covered by other dashboards.
+- Booking utilization (Scheduled / Blocked / Available / Booked / Remaining) — needs scheduling integration; later.
+- Client type breakdown (NEW / REG / WLK) — requires a definition of "new" relative to a period; later.
+- Commission information block — already lives in [PayrollDetailPage](frontend/src/pages/PayrollDetailPage.tsx).
+
+**Backend:** `GET /reports/service-performance?provider_id=...&start=...&end=...` returning service rows + summary aggregates. Same auth/pattern as `/reports/payroll-detail`. Filters `Sale.status == completed`, `SaleItem.provider_id == provider_id`, `Sale.completed_at` in `[start, end]`.
+
+**Frontend:** `ServicePerformanceReportPage.tsx` linked from ReportsPage, mirroring PayrollDetailPage's date-range + provider picker. Print CSS so the in-app view doubles as the printable report.
+
+**Phase 2 (after MVP UAT):** server-side PDF via WeasyPrint.
+
+**Phase 3:** scheduled monthly email through the Briefing Engine (`salon_owner` audience).
+
+**Depends on:** None — standalone.

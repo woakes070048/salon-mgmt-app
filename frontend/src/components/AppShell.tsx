@@ -282,6 +282,7 @@ export default function AppShell() {
                           <SubNavLink to="/reports/transactions"  icon={List}       label="Transactions"            />
                           <SubNavLink to="/reports/payroll"        icon={DollarSign} label={t('nav.payroll')}        />
                           <SubNavLink to="/reports/payroll-detail" icon={List}       label="Payroll Detail"          />
+                          <SubNavLink to="/reports/service-performance" icon={List}  label="Service Performance"     />
                           <SubNavLink to="/reports/petty-cash"    icon={Coins}      label={t('nav.petty_cash')}     />
                         </>
                       )}
