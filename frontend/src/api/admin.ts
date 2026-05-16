@@ -163,6 +163,27 @@ export function getHistoricalPayments(): Promise<HistoricalPaymentOut[]> {
   return api.get<HistoricalPaymentOut[]>('/admin/historical-payments')
 }
 
+// ── Diagnostic ────────────────────────────────────────────────────────────────
+
+export interface DiagnoseSalesItem {
+  day: string
+  provider: string
+  provider_is_null: boolean
+  appt_item_id_is_null: boolean
+  kind: string
+  items: number
+}
+
+export interface DiagnoseSalesSummary {
+  range: { start: string; end: string }
+  providers: { id: string; display_name: string }[]
+  items: DiagnoseSalesItem[]
+}
+
+export function diagnoseSalesSummary(start: string, end: string): Promise<DiagnoseSalesSummary> {
+  return api.get<DiagnoseSalesSummary>(`/admin/diagnose/sales-summary?start=${start}&end=${end}`)
+}
+
 // ── Legacy data import ────────────────────────────────────────────────────────
 
 export interface ImportResult {

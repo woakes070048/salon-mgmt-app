@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileText, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, type ImportResult, type ZeroApptPreview } from '@/api/admin'
+import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, diagnoseSalesSummary, type ImportResult, type ZeroApptPreview, type DiagnoseSalesSummary } from '@/api/admin'
 
 const FILES = [
   { key: 'clients_csv',          labelKey: 'import.client_details',          hint: 'Client Details.txt',            required: true  },
@@ -238,7 +238,102 @@ export default function DataImportPage() {
         <div className="mt-8 pt-6 border-t">
           <HistoricalPayments />
         </div>
+
+        <div className="mt-8 pt-6 border-t">
+          <DiagnoseSales />
+        </div>
       </div>
+    </div>
+  )
+}
+
+function DiagnoseSales() {
+  const [start, setStart] = useState('2026-05-07')
+  const [end, setEnd] = useState('2026-05-13')
+  const [data, setData] = useState<DiagnoseSalesSummary | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setLoading(true); setError(null); setData(null)
+    try {
+      setData(await diagnoseSalesSummary(start, end))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold mb-1">Diagnose missing sales</h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Shows what sale_items are actually in the DB for a date range, grouped by provider.
+        Use this to figure out why a provider's payroll report is missing transactions.
+      </p>
+      <div className="flex items-end gap-2 mb-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Start</label>
+          <input type="date" value={start} onChange={e => setStart(e.target.value)}
+            className="block border rounded px-2 py-1 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">End</label>
+          <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+            className="block border rounded px-2 py-1 text-sm" />
+        </div>
+        <Button onClick={run} disabled={loading} size="sm">
+          {loading ? 'Running…' : 'Diagnose'}
+        </Button>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {data.items.length === 0 ? (
+            <p className="text-sm text-destructive font-medium">
+              No sale_items in DB for {data.range.start} → {data.range.end}.
+              The data was never imported.
+            </p>
+          ) : (
+            <div className="border rounded-lg overflow-hidden bg-white">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/30 border-b">
+                  <tr>
+                    <th className="text-left px-2 py-1.5">Day</th>
+                    <th className="text-left px-2 py-1.5">Provider</th>
+                    <th className="text-left px-2 py-1.5">Kind</th>
+                    <th className="text-right px-2 py-1.5">Items</th>
+                    <th className="text-center px-2 py-1.5">Appt link missing?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((r, i) => (
+                    <tr key={i} className={`border-b last:border-0 ${r.appt_item_id_is_null ? 'bg-amber-50' : ''}`}>
+                      <td className="px-2 py-1 tabular-nums">{r.day}</td>
+                      <td className="px-2 py-1">{r.provider}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{r.kind}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{r.items}</td>
+                      <td className="px-2 py-1 text-center">{r.appt_item_id_is_null ? '⚠️ YES' : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground">All current providers ({data.providers.length})</summary>
+            <ul className="mt-2 space-y-0.5">
+              {data.providers.map(p => (
+                <li key={p.id} className="font-mono">{p.display_name}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
     </div>
   )
 }
