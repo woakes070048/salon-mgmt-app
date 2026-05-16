@@ -1365,6 +1365,54 @@ When a staff member converts a request → appointment today, the client gets th
 
 ---
 
+### P-DEV-1 · Dev data synthesizer (scripts/synthesize_dev_data.py)
+
+Stand up a populated dev environment without ever touching prod data. Generates realistic synthetic clients, appointments, sales, time entries, schedules — keyed by a `--seed` for reproducibility and a `--days-back / --days-forward` window so the dev calendar stays alive over time instead of rotting into the past.
+
+**Why:** prod→dev sync (even with anonymization) is the wrong long-term answer:
+
+1. Small population (hundreds of clients) defeats anonymization — schedule + service + provider patterns re-identify clients independently of name/email scrubbing.
+2. The moment a second tenant comes on board, "we process customer data in dev" kills B2B security reviews.
+3. Sync infrastructure rots; synthesis is a single Python script.
+
+**CLI surface (small on purpose):**
+
+```
+uv run --project backend python scripts/synthesize_dev_data.py \
+  [--seed 42] \
+  [--days-back 60] \
+  [--days-forward 60] \
+  [--wipe-all]
+```
+
+**Behaviour:**
+
+- **Reproducibility:** same `--seed` produces the same dataset (Faker + random both seeded).
+- **Date range relative to today:** appointments span `today - days_back` to `today + days_forward`. Re-running rolls the window forward so the dev calendar never goes stale.
+- **Volume hardcoded:** ~150 clients, ~6 providers matching the real category mix, ~3000 appointments across the window, realistic sale + payment distributions. Don't expose flags for these; pick once and move on.
+- **Idempotency by default:** synthetic rows are tagged with `is_synthetic = true` (or equivalent). Re-running wipes only synthetic rows so any real user/client you created manually for testing survives.
+- **`--wipe-all` flag:** nuke everything including your own user — for full fresh state.
+
+**Tables touched:**
+- `clients` — Faker names/emails/phones, locale=`en_CA` and `fr_CA` mix, occasional French pronouns
+- `service_categories` + `services` — fixed list matching Salon Lyol's actual catalogue shape (Type 1/2/2+ Haircut, Camo Colour, Full Balayage, Root Touch-Up, Blowdry, etc.) but NOT real prices/fees — picked to look plausible
+- `providers` — 6 fake stylists with realistic schedules (Tue–Sat shifts)
+- `provider_schedules` — Mon–Sun rows covering the window
+- `appointments` + `appointment_items` — realistic durations, service mixes, occasional no-shows / late cancellations
+- `sales` + `sale_items` + `payments` — realistic payment splits (cash/debit/visa mix, occasional discount, occasional BR flag)
+- `staff_time_entries` — clock-in/out matching shifts, with a few manual corrections
+- A few `client_colour_notes` and `clients.special_instructions` — generated from a small template list, not copied from anything real
+
+**What the synthesizer does NOT do:**
+- Inbound emails / appointment requests — out of scope v1. When you need to test inbound flow, paste a real form email into the webhook by hand.
+- Acknowledgements history, briefing engine outputs, recommendation log — generated on demand by the feature itself, no need to seed.
+
+**Bug-repro pattern when you actually need real-shape data:** for a one-off prod bug, copy the single affected `inbound_raw_body` / sale / appointment row into a test fixture by hand. Twice a year, takes 10 min, doesn't require infrastructure.
+
+**Phase:** post-parallel-run (don't build this weekend). When dev needs to look populated for testing or demo, run the synthesizer instead of considering prod sync.
+
+---
+
 ### P3-19 · Client-facing service catalogue — visibility flag + dropdown overflow
 
 Two related problems with the service picker in the public booking dialog (`RequestAppointmentDialog`):
