@@ -8,6 +8,7 @@ import {
   createService,
   updateService,
   deactivateService,
+  getServiceFeeHistory,
   type ServiceDetail,
   type ServiceIn,
   type ServicePatch,
@@ -558,6 +559,7 @@ function DetailsForm({
           <p className="text-xs text-muted-foreground mt-1">
             {form.is_cost_percent ? '% of service price charged to provider' : 'Flat amount per application'}
           </p>
+          {initial && <FeeHistory serviceId={initial.id} />}
         </div>
         <div>
           <Label>{t('services.duration_label')}</Label>
@@ -621,6 +623,37 @@ function DetailsForm({
         )}
         <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
       </div>
+    </div>
+  )
+}
+
+function FeeHistory({ serviceId }: { serviceId: string }) {
+  const { data: rows = [] } = useQuery({
+    queryKey: ['service-fee-history', serviceId],
+    queryFn: () => getServiceFeeHistory(serviceId),
+  })
+  const [expanded, setExpanded] = useState(false)
+  if (rows.length === 0) return null
+  const visible = expanded ? rows : rows.slice(0, 3)
+  return (
+    <div className="mt-2 border-t pt-2">
+      <p className="text-xs font-medium text-muted-foreground mb-1">Fee history</p>
+      <ul className="text-xs text-muted-foreground space-y-0.5">
+        {visible.map((r, i) => (
+          <li key={i} className="font-mono">
+            {r.effective_from} — {r.product_fee ?? '0'}{r.is_cost_percent ? '%' : ''}
+          </li>
+        ))}
+      </ul>
+      {rows.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="text-xs text-primary hover:underline mt-1"
+        >
+          {expanded ? 'Show less' : `Show ${rows.length - 3} more`}
+        </button>
+      )}
     </div>
   )
 }

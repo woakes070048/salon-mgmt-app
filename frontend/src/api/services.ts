@@ -83,3 +83,14 @@ export function updateService(id: string, body: ServicePatch): Promise<ServiceDe
 export function deactivateService(id: string): Promise<void> {
   return api.delete<void>(`/services/${id}`)
 }
+
+export interface ServiceFeeHistoryRow {
+  effective_from: string
+  product_fee: string | null
+  is_cost_percent: boolean
+  changed_by_user_id: string | null
+}
+
+export function getServiceFeeHistory(id: string): Promise<ServiceFeeHistoryRow[]> {
+  return api.get<ServiceFeeHistoryRow[]>(`/services/${id}/fee-history`)
+}
