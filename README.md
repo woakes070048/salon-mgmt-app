@@ -226,13 +226,13 @@ This codebase is built almost entirely through [Claude Code](https://claude.ai/c
 
 | Metric | Count |
 |--------|-------|
-| **Frontend** (TypeScript / React) | ~20,800 lines · 87 files |
-| **Backend** (Python / FastAPI) | ~15,600 lines · 74 files |
-| **Database migrations** (Alembic) | ~3,400 lines · 64 migrations |
-| **Total source** | **~39,800 lines** |
-| **Git commits** | 463 |
-| **API endpoints** | ~145 |
-| **Database entities** | 25 core models |
+| **Frontend** (TypeScript / React) | ~21,200 lines · 90 files |
+| **Backend** (Python / FastAPI) | ~15,900 lines · 75 files |
+| **Database migrations** (Alembic) | ~3,600 lines · 70 migrations |
+| **Total source** | **~40,700 lines** |
+| **Git commits** | 521 |
+| **API endpoints** | ~148 |
+| **Database entities** | 26 core models |
 
 ---
 

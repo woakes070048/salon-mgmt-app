@@ -4,6 +4,20 @@
 
 ---
 
+## 🔴 Current session — in progress (2026-05-17)
+
+**Parallel run payroll reconciliation.** Milano and SalonOS payroll figures are now very close but not exact. Active work:
+
+- `service_id` column added to `sale_items` (migration `a1ea45b5edac`) — allows payroll to attribute basket add-ons (services added directly at checkout, not in the appointment book) to the correct provider/service category without requiring the `appointment_item_id` link.
+- Backfill script run: `scripts/backfill_sale_item_service_id.py` — patched 5,579 historical sale items from Oct 1 2025 onward.
+- Payroll service query rewritten as raw SQL (deploy #493) to COALESCE service resolution via both `appointment_item_id → service` and `sale_items.service_id → service` paths.
+- **Next:** verify Sarah's service performance report shows 11 Partial Head Highlights (was 10) after #493 deploys. Then run payroll for all providers and reconcile against Milano.
+- **Also pending:** add gross + net-of-product-fees to Service Performance report to match Milano's format.
+
+**Dev environment** also stood up this week — see section below.
+
+---
+
 ## 🚧 Dev environment — pending placeholders
 
 The dev GCP project (`salon-mgmt-app-dev`) was stood up 2026-05-15. Code, CI/CD, banner, and email gating are all working — but several integrations were left with placeholder credentials so the first deploy could complete. Each item below needs real values before the corresponding feature can be tested in dev.
