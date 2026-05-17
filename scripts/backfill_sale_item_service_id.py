@@ -7,10 +7,11 @@ Two passes:
 Safe to re-run; uses UPDATE ... WHERE service_id IS NULL so already-set rows are skipped.
 """
 import asyncio
+from datetime import date
 from sqlalchemy import text
 from app.database import AsyncSessionLocal
 
-FISCAL_START = "2025-10-01"
+FISCAL_START = date(2025, 10, 1)
 
 
 async def main() -> None:
