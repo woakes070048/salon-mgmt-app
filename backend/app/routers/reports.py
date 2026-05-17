@@ -579,8 +579,12 @@ async def payroll_detail_report(
     from app.models.service import Service, ServiceCategory, ServiceFeeHistory
     from app.models.provider_service_price import ProviderServicePrice
     from app.models.schedule import ProviderSchedule, ProviderScheduleException
-    from sqlalchemy import cast
+    from sqlalchemy import cast, orm
     from sqlalchemy.types import Date as SADate
+    ServiceViaAppt = orm.aliased(Service, flat=True)
+    ServiceViaSaleItem = orm.aliased(Service, flat=True)
+    CatViaAppt = orm.aliased(ServiceCategory, flat=True)
+    CatViaSaleItem = orm.aliased(ServiceCategory, flat=True)
 
     tid = current_user.tenant_id
     pid = uuid.UUID(provider_id)
@@ -622,6 +626,11 @@ async def payroll_detail_report(
         .subquery()
     )
 
+    # Resolve service via two independent outer-join paths:
+    #   Path A: SaleItem → AppointmentItem → ServiceViaAppt (linked items)
+    #   Path B: SaleItem.service_id → ServiceViaSaleItem (basket add-ons / group overflow)
+    # Coalesce at SELECT level so either path provides the service data.
+    resolved_svc_id = func.coalesce(ServiceViaAppt.id, ServiceViaSaleItem.id)
     svc_txn_rows = (await db.execute(
         select(
             Sale.completed_at,
@@ -630,20 +639,28 @@ async def payroll_detail_report(
             SaleItem.unit_price,
             SaleItem.quantity,
             SaleItem.is_business_reimbursed,
-            Service.name.label("service_name"),
-            Service.id.label("service_id"),
-            func.coalesce(fee_subq.c.hist_fee, Service.default_cost).label("default_cost"),
-            Service.default_price,
-            func.coalesce(fee_subq.c.hist_is_pct, Service.is_cost_percent).label("is_cost_percent"),
-            ServiceCategory.name.label("cat_name"),
+            func.coalesce(ServiceViaAppt.name, ServiceViaSaleItem.name).label("service_name"),
+            resolved_svc_id.label("service_id"),
+            func.coalesce(
+                fee_subq.c.hist_fee,
+                func.coalesce(ServiceViaAppt.default_cost, ServiceViaSaleItem.default_cost),
+            ).label("default_cost"),
+            func.coalesce(ServiceViaAppt.default_price, ServiceViaSaleItem.default_price).label("default_price"),
+            func.coalesce(
+                fee_subq.c.hist_is_pct,
+                func.coalesce(ServiceViaAppt.is_cost_percent, ServiceViaSaleItem.is_cost_percent),
+            ).label("is_cost_percent"),
+            func.coalesce(CatViaAppt.name, CatViaSaleItem.name).label("cat_name"),
         )
         .join(Sale, Sale.id == SaleItem.sale_id)
         .join(Client, Client.id == Sale.client_id)
         .outerjoin(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
-        .join(Service, Service.id == func.coalesce(AppointmentItem.service_id, SaleItem.service_id))
-        .join(ServiceCategory, ServiceCategory.id == Service.category_id)
-        .outerjoin(fee_subq, fee_subq.c.svc_id == Service.id)
-        .where(func.coalesce(AppointmentItem.service_id, SaleItem.service_id) != None)
+        .outerjoin(ServiceViaAppt, ServiceViaAppt.id == AppointmentItem.service_id)
+        .outerjoin(CatViaAppt, CatViaAppt.id == ServiceViaAppt.category_id)
+        .outerjoin(ServiceViaSaleItem, ServiceViaSaleItem.id == SaleItem.service_id)
+        .outerjoin(CatViaSaleItem, CatViaSaleItem.id == ServiceViaSaleItem.category_id)
+        .outerjoin(fee_subq, fee_subq.c.svc_id == resolved_svc_id)
+        .where(resolved_svc_id != None)
         .where(
             SaleItem.tenant_id == tid,
             SaleItem.provider_id == pid,
@@ -652,7 +669,7 @@ async def payroll_detail_report(
             cast(Sale.completed_at, SADate) >= period_start,
             cast(Sale.completed_at, SADate) <= period_end,
         )
-        .order_by(Sale.completed_at, Service.name)
+        .order_by(Sale.completed_at, func.coalesce(ServiceViaAppt.name, ServiceViaSaleItem.name))
     )).all()
 
     styling_gross = D("0"); styling_fees = D("0")
