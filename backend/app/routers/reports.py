@@ -626,50 +626,47 @@ async def payroll_detail_report(
         .subquery()
     )
 
-    # Resolve service via two independent outer-join paths:
-    #   Path A: SaleItem → AppointmentItem → ServiceViaAppt (linked items)
-    #   Path B: SaleItem.service_id → ServiceViaSaleItem (basket add-ons / group overflow)
-    # Coalesce at SELECT level so either path provides the service data.
-    resolved_svc_id = func.coalesce(ServiceViaAppt.id, ServiceViaSaleItem.id)
-    svc_txn_rows = (await db.execute(
-        select(
-            Sale.completed_at,
-            Client.first_name, Client.last_name,
-            SaleItem.line_total,
-            SaleItem.unit_price,
-            SaleItem.quantity,
-            SaleItem.is_business_reimbursed,
-            func.coalesce(ServiceViaAppt.name, ServiceViaSaleItem.name).label("service_name"),
-            resolved_svc_id.label("service_id"),
-            func.coalesce(
-                fee_subq.c.hist_fee,
-                func.coalesce(ServiceViaAppt.default_cost, ServiceViaSaleItem.default_cost),
-            ).label("default_cost"),
-            func.coalesce(ServiceViaAppt.default_price, ServiceViaSaleItem.default_price).label("default_price"),
-            func.coalesce(
-                fee_subq.c.hist_is_pct,
-                func.coalesce(ServiceViaAppt.is_cost_percent, ServiceViaSaleItem.is_cost_percent),
-            ).label("is_cost_percent"),
-            func.coalesce(CatViaAppt.name, CatViaSaleItem.name).label("cat_name"),
-        )
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .join(Client, Client.id == Sale.client_id)
-        .outerjoin(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
-        .outerjoin(ServiceViaAppt, ServiceViaAppt.id == AppointmentItem.service_id)
-        .outerjoin(CatViaAppt, CatViaAppt.id == ServiceViaAppt.category_id)
-        .outerjoin(ServiceViaSaleItem, ServiceViaSaleItem.id == SaleItem.service_id)
-        .outerjoin(CatViaSaleItem, CatViaSaleItem.id == ServiceViaSaleItem.category_id)
-        .outerjoin(fee_subq, fee_subq.c.svc_id == resolved_svc_id)
-        .where(resolved_svc_id != None)
-        .where(
-            SaleItem.tenant_id == tid,
-            SaleItem.provider_id == pid,
-            SaleItem.kind == SaleItemKind.service,
-            Sale.status == SaleStatus.completed,
-            cast(Sale.completed_at, SADate) >= period_start,
-            cast(Sale.completed_at, SADate) <= period_end,
-        )
-        .order_by(Sale.completed_at, func.coalesce(ServiceViaAppt.name, ServiceViaSaleItem.name))
+    # Two outer-join paths to resolve the service for each sale item:
+    #   Path A: via appointment_item (booked services)
+    #   Path B: via sale_items.service_id directly (basket add-ons, group overflow)
+    # Using raw SQL to avoid SQLAlchemy aliased-join edge cases with coalesce.
+    svc_txn_rows = (await db.execute(text("""
+        SELECT
+            s.completed_at,
+            c.first_name, c.last_name,
+            si.line_total, si.unit_price, si.quantity, si.is_business_reimbursed,
+            COALESCE(sva.name, svs.name)                                    AS service_name,
+            COALESCE(sva.id,   svs.id)                                      AS service_id,
+            COALESCE(fh.hist_fee,  sva.default_cost,  svs.default_cost)    AS default_cost,
+            COALESCE(sva.default_price, svs.default_price)                  AS default_price,
+            COALESCE(fh.hist_is_pct, sva.is_cost_percent, svs.is_cost_percent) AS is_cost_percent,
+            COALESCE(cva.name, cvs.name)                                    AS cat_name
+        FROM sale_items si
+        JOIN sales s       ON s.id  = si.sale_id
+        JOIN clients c     ON c.id  = s.client_id
+        LEFT JOIN appointment_items ai ON ai.id  = si.appointment_item_id
+        LEFT JOIN services sva         ON sva.id = ai.service_id
+        LEFT JOIN service_categories cva ON cva.id = sva.category_id
+        LEFT JOIN services svs         ON svs.id = si.service_id
+        LEFT JOIN service_categories cvs ON cvs.id = svs.category_id
+        LEFT JOIN (
+            SELECT DISTINCT ON (service_id) service_id,
+                   product_fee  AS hist_fee,
+                   is_cost_percent AS hist_is_pct
+            FROM service_fee_history
+            WHERE tenant_id = :tid
+              AND effective_from <= :period_end
+            ORDER BY service_id, effective_from DESC, created_at DESC
+        ) fh ON fh.service_id = COALESCE(sva.id, svs.id)
+        WHERE si.tenant_id   = :tid
+          AND si.provider_id = :pid
+          AND si.kind        = 'service'
+          AND s.status       = 'completed'
+          AND s.completed_at::date >= :period_start
+          AND s.completed_at::date <= :period_end
+          AND COALESCE(sva.id, svs.id) IS NOT NULL
+        ORDER BY s.completed_at, COALESCE(sva.name, svs.name)
+    """), {"tid": tid, "pid": pid, "period_start": period_start, "period_end": period_end}
     )).all()
 
     styling_gross = D("0"); styling_fees = D("0")
