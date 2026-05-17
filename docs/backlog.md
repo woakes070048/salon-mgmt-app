@@ -11,8 +11,15 @@
 - `service_id` column added to `sale_items` (migration `a1ea45b5edac`) — allows payroll to attribute basket add-ons (services added directly at checkout, not in the appointment book) to the correct provider/service category without requiring the `appointment_item_id` link.
 - Backfill script run: `scripts/backfill_sale_item_service_id.py` — patched 5,579 historical sale items from Oct 1 2025 onward.
 - Payroll service query rewritten as raw SQL (deploy #493) to COALESCE service resolution via both `appointment_item_id → service` and `sale_items.service_id → service` paths.
-- **Next:** verify Sarah's service performance report shows 11 Partial Head Highlights (was 10) after #493 deploys. Then run payroll for all providers and reconcile against Milano.
-- **Also pending:** add gross + net-of-product-fees to Service Performance report to match Milano's format.
+- ✅ Service Performance report now shows Net Sales and Product Fee columns (P-PERF-RECONCILE, deploy 5a2b99c).
+- ✅ Self-service "Backfill service IDs" button — re-resolves `sale_items.service_id` from `RECEIPT_SERVICE_MAP` against the current catalog after adding a service that was missing at import time. Linked 4406 of 4472 orphans for Salon Lyol.
+- ✅ Legacy import now surfaces `unknown_descriptions` and `missing_service_codes` in its response instead of silently writing NULL.
+
+### Follow-ups from P-PERF-RECONCILE
+
+- **P-MAP-UI** (~1h) — Move `RECEIPT_SERVICE_MAP` from `legacy_import.py` into the DB as `Service.legacy_aliases: text[]` (or a tiny child table), edited via the existing Service edit dialog as a chip input. Owner can self-serve future alias additions without a code deploy. Includes one-time data migration to seed from the current hardcoded map.
+- **P-BACKFILL-CONFLATE** (~10 min) — `POST /admin/diagnose/backfill-sale-item-service-ids` lumps "description not in `RECEIPT_SERVICE_MAP`" together with "description deliberately mapped to None" (e.g., `redo`, `bdb reimbursement by house`). Result: those two show up as "unknown" when they're actually intentional. Fix: check `desc_key in RECEIPT_SERVICE_MAP` separately from the value being truthy; silently skip None-mapped entries in the unmapped count.
+- **P-ORPHAN-CATEGORY** — A Payroll Detail 500 surfaced when the backfill linked sale_items whose service had a NULL category join (`COALESCE(cva.name, cvs.name) IS NULL`). Patched immediately by making `PayrollServiceRow.category: str | None`, but the root cause — services whose `category_id` doesn't resolve to a `service_categories` row — should be investigated. Likely a deleted category leaving a stale FK. Add a diagnostic that lists `services` rows whose `category_id` doesn't join.
 
 **Dev environment** also stood up this week — see section below.
 

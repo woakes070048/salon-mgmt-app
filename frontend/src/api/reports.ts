@@ -94,7 +94,7 @@ export function getTransactionReport(start: string, end: string): Promise<Transa
 
 export interface PayrollServiceRow {
   date: string; client_name: string; service_name: string
-  category: string; is_colour: boolean
+  category: string | null; is_colour: boolean
   gross_amount: string; product_fee: string; net_amount: string
 }
 export interface PayrollRetailRow {

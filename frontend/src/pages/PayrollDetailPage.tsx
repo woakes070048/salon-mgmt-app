@@ -50,7 +50,7 @@ export default function PayrollDetailPage() {
       ['SERVICE TRANSACTIONS'],
       ['Date', 'Client', 'Service', 'Category', 'Gross', 'Product Fee', 'Net'],
       ...data.service_rows.map(r => [
-        r.date, r.client_name, r.service_name, r.category,
+        r.date, r.client_name, r.service_name, r.category ?? '',
         fmt(r.gross_amount), fmt(r.product_fee), fmt(r.net_amount),
       ]),
       [],

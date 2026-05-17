@@ -524,7 +524,11 @@ class PayrollServiceRow(BaseModel):
     date: str
     client_name: str
     service_name: str
-    category: str           # "Styling" | "Colouring" | etc.
+    # Nullable: a sale_item can resolve a service via Path B (si.service_id)
+    # without its category join matching — happens when a service was created
+    # with a stale category_id or the row was orphaned by a backfill. The
+    # response should still render; frontend displays "—" for None.
+    category: str | None
     is_colour: bool
     gross_amount: str       # what was charged
     product_fee: str        # deducted from gross before commission
