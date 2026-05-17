@@ -639,10 +639,11 @@ async def payroll_detail_report(
         )
         .join(Sale, Sale.id == SaleItem.sale_id)
         .join(Client, Client.id == Sale.client_id)
-        .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
-        .join(Service, Service.id == AppointmentItem.service_id)
+        .outerjoin(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
+        .join(Service, Service.id == func.coalesce(AppointmentItem.service_id, SaleItem.service_id))
         .join(ServiceCategory, ServiceCategory.id == Service.category_id)
         .outerjoin(fee_subq, fee_subq.c.svc_id == Service.id)
+        .where(func.coalesce(AppointmentItem.service_id, SaleItem.service_id) != None)
         .where(
             SaleItem.tenant_id == tid,
             SaleItem.provider_id == pid,

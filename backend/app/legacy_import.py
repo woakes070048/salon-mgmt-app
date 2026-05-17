@@ -786,23 +786,26 @@ async def import_receipts(
             qty = int(item.get("Quantity") or 1)
             kind = "service" if _is_service(desc) else "retail"
             provider_id = provider_map.get(staff) if staff else None
-            # Linked for both branches: new-appointment path populates the dict at
-            # insert time; use_existing path populates it via best-effort matching
-            # against existing appointment_items above (P-IMPORT-LINK).
             ai_id = receipt_item_to_appt_item.get(idx)
+            # Resolve service_id from description for all service lines —
+            # this works even when appointment_item_id is null (basket add-ons,
+            # group checkout overflow) and is required for payroll attribution.
+            db_code = RECEIPT_SERVICE_MAP.get(desc.lower()) if kind == "service" else None
+            svc = service_detail.get(db_code.lower()) if db_code else None
+            svc_id = svc["id"] if svc else None
             # Milano exports Amount as the LINE TOTAL, not unit price (confirmed by GST pattern).
             line_total = Decimal(str(round(amount, 2)))
             unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total
 
             await db.execute(
                 text("INSERT INTO sale_items (id, tenant_id, sale_id, appointment_item_id,"
-                     " description, provider_id, kind, sequence, quantity,"
+                     " service_id, description, provider_id, kind, sequence, quantity,"
                      " unit_price, discount_amount, line_total, created_at, updated_at)"
                      " VALUES (:id, :tid, :sale_id, :ai_id,"
-                     " :desc, :prov_id, :kind, :seq, :qty,"
+                     " :svc_id, :desc, :prov_id, :kind, :seq, :qty,"
                      " :unit_price, 0, :line_total, NOW(), NOW())"),
                 {"id": uuid.uuid4(), "tid": tenant_id, "sale_id": sale_id,
-                 "ai_id": ai_id, "desc": desc, "prov_id": provider_id,
+                 "ai_id": ai_id, "svc_id": svc_id, "desc": desc, "prov_id": provider_id,
                  "kind": kind, "seq": idx + 1, "qty": qty,
                  "unit_price": unit_price,
                  "line_total": line_total},

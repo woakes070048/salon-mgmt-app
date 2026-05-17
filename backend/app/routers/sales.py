@@ -474,6 +474,7 @@ async def create_sale(
                 sale_id=sale.id,
                 kind=SaleItemKind.service,
                 appointment_item_id=ai.id,
+                service_id=ai.service_id,
                 description=service_names.get(ai.service_id, "Service"),
                 provider_id=ai.provider_id,
                 promotion_id=promo_uuid if promo_uuid and promo_uuid in promos_by_id else None,
