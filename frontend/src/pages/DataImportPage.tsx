@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileText, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, diagnoseSalesSummary, backfillSaleItemLinks, type ImportResult, type ZeroApptPreview, type DiagnoseSalesSummary, type BackfillSaleItemLinksResult } from '@/api/admin'
+import { importLegacyData, previewZeroApptClients, deleteZeroApptClients, upsertHistoricalPayments, diagnoseSalesSummary, backfillSaleItemLinks, backfillSaleItemServiceIds, type ImportResult, type ZeroApptPreview, type DiagnoseSalesSummary, type BackfillSaleItemLinksResult, type BackfillSaleItemServiceIdsResult } from '@/api/admin'
 
 const FILES = [
   { key: 'clients_csv',          labelKey: 'import.client_details',          hint: 'Client Details.txt',            required: true  },
@@ -255,6 +255,8 @@ function DiagnoseSales() {
   const [error, setError] = useState<string | null>(null)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<BackfillSaleItemLinksResult | null>(null)
+  const [svcBackfilling, setSvcBackfilling] = useState(false)
+  const [svcBackfillResult, setSvcBackfillResult] = useState<BackfillSaleItemServiceIdsResult | null>(null)
 
   async function run() {
     setLoading(true); setError(null); setData(null)
@@ -282,6 +284,18 @@ function DiagnoseSales() {
     }
   }
 
+  async function runSvcBackfill() {
+    if (!confirm('Re-resolve sale_items.service_id from description for items where it is NULL. Use this after adding a missing service to the catalog so historical reports pick it up.')) return
+    setSvcBackfilling(true); setError(null); setSvcBackfillResult(null)
+    try {
+      setSvcBackfillResult(await backfillSaleItemServiceIds())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Service-id backfill failed')
+    } finally {
+      setSvcBackfilling(false)
+    }
+  }
+
   return (
     <div>
       <h2 className="text-sm font-semibold mb-1">Diagnose missing sales</h2>
@@ -306,14 +320,49 @@ function DiagnoseSales() {
         <Button onClick={runBackfill} disabled={backfilling} size="sm" variant="outline">
           {backfilling ? 'Linking…' : 'Backfill appt links'}
         </Button>
+        <Button onClick={runSvcBackfill} disabled={svcBackfilling} size="sm" variant="outline">
+          {svcBackfilling ? 'Linking…' : 'Backfill service IDs'}
+        </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {backfillResult && (
         <p className="text-sm mb-3">
-          Backfill: found {backfillResult.orphans_found}, linked {backfillResult.linked}, unmatched {backfillResult.unmatched}.
+          Backfill (appt links): found {backfillResult.orphans_found}, linked {backfillResult.linked}, unmatched {backfillResult.unmatched}.
         </p>
+      )}
+
+      {svcBackfillResult && (
+        <div className="text-sm mb-3 space-y-1">
+          <p>
+            Backfill (service IDs): found {svcBackfillResult.orphans_found}, linked {svcBackfillResult.linked}.
+          </p>
+          {svcBackfillResult.unmapped_descriptions.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-amber-700">
+                {svcBackfillResult.unmapped_descriptions.length} unknown description(s) — not in RECEIPT_SERVICE_MAP
+              </summary>
+              <ul className="ml-4 mt-1 list-disc">
+                {svcBackfillResult.unmapped_descriptions.map((d, i) => (
+                  <li key={i}><code>{d.description}</code> ({d.count})</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {svcBackfillResult.missing_service_codes.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-amber-700">
+                {svcBackfillResult.missing_service_codes.length} service code(s) missing from catalog — add the service then re-run
+              </summary>
+              <ul className="ml-4 mt-1 list-disc">
+                {svcBackfillResult.missing_service_codes.map((c, i) => (
+                  <li key={i}><code>{c.service_code}</code> ({c.count})</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
 
       {data && (

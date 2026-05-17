@@ -125,6 +125,8 @@ export function getPayrollDetail(
 export interface ServicePerformanceServiceRow {
   service_name: string
   total_sales: string
+  product_fee: string
+  net_sales: string
   sales_count: number
   average_price: string
   pct_of_sales: string
@@ -134,7 +136,10 @@ export interface ServicePerformanceReport {
   provider_id: string; provider_name: string
   period_start: string; period_end: string
   service_rows: ServicePerformanceServiceRow[]
-  total_service_sales: string; total_service_count: number; average_service_price: string
+  total_service_sales: string
+  total_service_fees: string
+  total_net_service_sales: string
+  total_service_count: number; average_service_price: string
   total_retail_sales: string; total_retail_count: number; average_retail_price: string
   total_sales: string
   pct_service_of_total: string; pct_retail_of_total: string; pct_retail_of_service: string

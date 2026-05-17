@@ -509,6 +509,11 @@ async def import_receipts(
             receipt_groups[rnum].append(r)
 
     created = updated = skipped_existing = skipped_no_client = walk_in_created = errors = 0
+    # Track service-line descriptions the importer couldn't resolve to a Service
+    # row, so the response surfaces them instead of silently writing NULL
+    # service_id (the root cause of unmapped rows on per-provider reports).
+    unknown_descriptions: dict[str, int] = {}      # not in RECEIPT_SERVICE_MAP
+    missing_service_codes: dict[str, int] = {}     # mapped, but no catalog row
 
     for receipt_num, items in receipt_groups.items():
         client_code = (items[0].get("Client") or "").strip()
@@ -561,19 +566,29 @@ async def import_receipts(
                 qty = int(item.get("Quantity") or 1)
                 kind = "service" if _is_service(desc) else "retail"
                 provider_id = provider_map.get(staff) if staff else None
+                # Resolve service_id from description so walk-in service items
+                # don't land orphaned (matches the receipt branch below).
+                db_code = RECEIPT_SERVICE_MAP.get(desc.lower()) if kind == "service" else None
+                svc = service_detail.get(db_code.lower()) if db_code else None
+                svc_id = svc["id"] if svc else None
+                if kind == "service":
+                    if not db_code:
+                        unknown_descriptions[desc] = unknown_descriptions.get(desc, 0) + 1
+                    elif not svc:
+                        missing_service_codes[db_code] = missing_service_codes.get(db_code, 0) + 1
                 # Milano exports Amount as the LINE TOTAL (subtotal), not unit price.
                 # GST = Amount × 5% confirms this for all qty>1 records.
                 line_total = Decimal(str(round(amount, 2)))
                 unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total
                 await db.execute(
                     text("INSERT INTO sale_items (id, tenant_id, sale_id, appointment_item_id,"
-                         " description, provider_id, kind, sequence, quantity,"
+                         " service_id, description, provider_id, kind, sequence, quantity,"
                          " unit_price, discount_amount, line_total, created_at, updated_at)"
                          " VALUES (:id, :tid, :sale_id, NULL,"
-                         " :desc, :prov_id, :kind, :seq, :qty,"
+                         " :svc_id, :desc, :prov_id, :kind, :seq, :qty,"
                          " :unit_price, 0, :line_total, NOW(), NOW())"),
                     {"id": uuid.uuid4(), "tid": tenant_id, "sale_id": sale_id,
-                     "desc": desc, "prov_id": provider_id,
+                     "svc_id": svc_id, "desc": desc, "prov_id": provider_id,
                      "kind": kind, "seq": idx + 1, "qty": qty,
                      "unit_price": unit_price,
                      "line_total": line_total},
@@ -793,6 +808,14 @@ async def import_receipts(
             db_code = RECEIPT_SERVICE_MAP.get(desc.lower()) if kind == "service" else None
             svc = service_detail.get(db_code.lower()) if db_code else None
             svc_id = svc["id"] if svc else None
+            # Record gaps so the caller can surface them rather than silently
+            # writing service_id=NULL. Owner can then add the missing service
+            # to the catalog and run /diagnose/backfill-sale-item-service-ids.
+            if kind == "service":
+                if not db_code:
+                    unknown_descriptions[desc] = unknown_descriptions.get(desc, 0) + 1
+                elif not svc:
+                    missing_service_codes[db_code] = missing_service_codes.get(db_code, 0) + 1
             # Milano exports Amount as the LINE TOTAL, not unit price (confirmed by GST pattern).
             line_total = Decimal(str(round(amount, 2)))
             unit_price = Decimal(str(round(amount / qty, 4))) if qty > 1 else line_total
@@ -842,6 +865,19 @@ async def import_receipts(
         "skipped_existing": skipped_existing,
         "skipped_no_client": skipped_no_client,
         "errors": errors,
+        # Descriptions whose Milano text isn't in RECEIPT_SERVICE_MAP at all.
+        # Fix: add the (lowercased) description → service_code in legacy_import.py.
+        "unknown_descriptions": [
+            {"description": d, "count": c}
+            for d, c in sorted(unknown_descriptions.items(), key=lambda x: -x[1])
+        ],
+        # Descriptions that mapped to a service_code but the catalog has no such
+        # service. Fix: create the service in /services with this service_code,
+        # then run POST /admin/diagnose/backfill-sale-item-service-ids.
+        "missing_service_codes": [
+            {"service_code": c, "count": n}
+            for c, n in sorted(missing_service_codes.items(), key=lambda x: -x[1])
+        ],
     }
 
 

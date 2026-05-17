@@ -54,14 +54,17 @@ export default function ServicePerformanceReportPage() {
       [`Period: ${data.period_start} to ${data.period_end}`],
       [],
       ['SERVICES'],
-      ['Service', 'Total Sales', '# Sales', 'Avg Price', '% of Sales', '% of Count'],
+      ['Service', 'Total Sales', 'Product Fee', 'Net Sales', '# Sales', 'Avg Price', '% of Sales', '% of Count'],
       ...data.service_rows.map(r => [
-        r.service_name, fmt(r.total_sales), String(r.sales_count),
+        r.service_name, fmt(r.total_sales), fmt(r.product_fee), fmt(r.net_sales),
+        String(r.sales_count),
         fmt(r.average_price), fmtPct(r.pct_of_sales), fmtPct(r.pct_of_count),
       ]),
       [],
       ['TOTALS'],
-      ['Total service sales', fmt(data.total_service_sales), String(data.total_service_count)],
+      ['Total service sales (gross)', fmt(data.total_service_sales), String(data.total_service_count)],
+      ['Total product fees', fmt(data.total_service_fees)],
+      ['Total net service sales', fmt(data.total_net_service_sales)],
       ['Total retail sales', fmt(data.total_retail_sales), String(data.total_retail_count)],
       ['Total sales', fmt(data.total_sales)],
       [],
@@ -178,6 +181,8 @@ export default function ServicePerformanceReportPage() {
                         <tr>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Service</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Total Sales</th>
+                          <th className="text-right px-3 py-2 font-medium text-muted-foreground">Product Fee</th>
+                          <th className="text-right px-3 py-2 font-medium text-muted-foreground">Net Sales</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground"># Sales</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Avg Price</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">% Sales</th>
@@ -185,21 +190,28 @@ export default function ServicePerformanceReportPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.service_rows.map((r, i) => (
-                          <tr key={i} className="border-b last:border-0">
-                            <td className="px-3 py-1.5">{r.service_name}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">${fmt(r.total_sales)}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">{r.sales_count}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">${fmt(r.average_price)}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtPct(r.pct_of_sales)}%</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtPct(r.pct_of_count)}%</td>
-                          </tr>
-                        ))}
+                        {data.service_rows.map((r, i) => {
+                          const unmapped = r.service_name.startsWith('(Unmapped)')
+                          return (
+                            <tr key={i} className={`border-b last:border-0 ${unmapped ? 'bg-amber-50' : ''}`}>
+                              <td className="px-3 py-1.5" title={unmapped ? 'No matching Service in catalog — sale_item not linked' : undefined}>{r.service_name}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">${fmt(r.total_sales)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">${fmt(r.product_fee)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-medium">${fmt(r.net_sales)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{r.sales_count}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">${fmt(r.average_price)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtPct(r.pct_of_sales)}%</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtPct(r.pct_of_count)}%</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                       <tfoot className="bg-muted/20 border-t">
                         <tr>
                           <td className="px-3 py-2 text-xs font-semibold">Total service</td>
                           <td className="px-3 py-2 text-right text-xs font-bold tabular-nums">${fmt(data.total_service_sales)}</td>
+                          <td className="px-3 py-2 text-right text-xs font-bold tabular-nums">${fmt(data.total_service_fees)}</td>
+                          <td className="px-3 py-2 text-right text-xs font-bold tabular-nums">${fmt(data.total_net_service_sales)}</td>
                           <td className="px-3 py-2 text-right text-xs font-bold tabular-nums">{data.total_service_count}</td>
                           <td className="px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">${fmt(data.average_service_price)}</td>
                           <td colSpan={2}></td>
@@ -233,9 +245,11 @@ export default function ServicePerformanceReportPage() {
                   <div className="bg-white border rounded-lg p-4">
                     <h2 className="text-sm font-medium mb-3">Totals</h2>
                     <div className="space-y-0 text-sm">
-                      <SummaryRow label="Total service" value={`$${fmt(data.total_service_sales)}`} />
+                      <SummaryRow label="Total service (gross)" value={`$${fmt(data.total_service_sales)}`} />
+                      <SummaryRow label="− Product fees" value={`$${fmt(data.total_service_fees)}`} indent />
+                      <SummaryRow label="Total service (net)" value={`$${fmt(data.total_net_service_sales)}`} bold />
                       <SummaryRow label="Total retail" value={`$${fmt(data.total_retail_sales)}`} />
-                      <SummaryRow label="Total sales" value={`$${fmt(data.total_sales)}`} bold />
+                      <SummaryRow label="Total sales (gross)" value={`$${fmt(data.total_sales)}`} bold />
                     </div>
                   </div>
 

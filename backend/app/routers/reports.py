@@ -817,7 +817,9 @@ async def payroll_detail_report(
 
 class ServicePerformanceServiceRow(BaseModel):
     service_name: str
-    total_sales: str        # sum of line_total
+    total_sales: str        # sum of line_total (gross — pre product-fee)
+    product_fee: str        # sum of allocated product fee per service
+    net_sales: str          # total_sales − product_fee
     sales_count: int        # sum of quantity (returns subtract)
     average_price: str      # total_sales / sales_count (0 if count == 0)
     pct_of_sales: str       # total_sales / total_service_sales * 100
@@ -829,10 +831,14 @@ class ServicePerformanceReport(BaseModel):
     provider_name: str
     period_start: str
     period_end: str
-    # Per-service breakdown (sorted by total_sales desc)
+    # Per-service breakdown (sorted by total_sales desc). Items whose
+    # sale_item couldn't be linked to a Service row appear as
+    # "(Unmapped) <description>" so the owner can reconcile counts.
     service_rows: list[ServicePerformanceServiceRow]
     # Totals
     total_service_sales: str
+    total_service_fees: str         # sum of product fees across all services
+    total_net_service_sales: str    # total_service_sales − total_service_fees
     total_service_count: int
     average_service_price: str
     total_retail_sales: str
@@ -861,9 +867,7 @@ async def service_performance_report(
     from datetime import date as _date
     from decimal import Decimal as D
     from app.models.client import Client
-    from app.models.appointment import AppointmentItem
-    from app.models.service import Service
-    from sqlalchemy import cast
+    from sqlalchemy import cast, text as _text
     from sqlalchemy.types import Date as SADate
     from fastapi import HTTPException
 
@@ -885,43 +889,81 @@ async def service_performance_report(
         else_=SaleItem.line_total,
     )
 
-    # Service rows aggregated by service.
-    svc_agg_rows = (await db.execute(
-        select(
-            Service.name.label("service_name"),
-            func.coalesce(func.sum(signed_line_total), 0).label("total"),
-            func.coalesce(func.sum(SaleItem.quantity), 0).label("count"),
+    # Dual-path service resolution (matches payroll-detail in this file):
+    #   Path A: sale_items.appointment_item_id → appointment_items.service_id → services
+    #   Path B: sale_items.service_id → services   (basket add-ons, group overflow)
+    # Items with no link on either path are surfaced as "(Unmapped) <desc>"
+    # so the owner can see which Milano descriptions never matched the catalog.
+    #
+    # Product fee is resolved from service_fee_history at period_end so historical
+    # runs aren't retroactively distorted by present-day fee changes (P-PAYROLL-1
+    # uses the same pattern).
+    svc_rows = (await db.execute(_text("""
+        WITH resolved AS (
+            SELECT
+                COALESCE(sva.name, svs.name, '(Unmapped) ' || si.description) AS service_name,
+                COALESCE(fh.hist_fee, sva.default_cost, svs.default_cost, 0)  AS fee_value,
+                COALESCE(fh.hist_is_pct, sva.is_cost_percent, svs.is_cost_percent, false) AS fee_is_pct,
+                si.quantity,
+                CASE WHEN si.quantity < 0 THEN -ABS(si.line_total) ELSE si.line_total END AS signed_total
+            FROM sale_items si
+            JOIN sales s ON s.id = si.sale_id
+            LEFT JOIN appointment_items ai ON ai.id = si.appointment_item_id
+            LEFT JOIN services sva ON sva.id = ai.service_id
+            LEFT JOIN services svs ON svs.id = si.service_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (service_id) service_id,
+                       product_fee     AS hist_fee,
+                       is_cost_percent AS hist_is_pct
+                FROM service_fee_history
+                WHERE tenant_id = :tid AND effective_from <= :period_end
+                ORDER BY service_id, effective_from DESC, created_at DESC
+            ) fh ON fh.service_id = COALESCE(sva.id, svs.id)
+            WHERE si.tenant_id   = :tid
+              AND si.provider_id = :pid
+              AND si.kind        = 'service'
+              AND s.status       = 'completed'
+              AND s.completed_at::date >= :period_start
+              AND s.completed_at::date <= :period_end
         )
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .join(AppointmentItem, AppointmentItem.id == SaleItem.appointment_item_id)
-        .join(Service, Service.id == AppointmentItem.service_id)
-        .where(
-            SaleItem.tenant_id == tid,
-            SaleItem.provider_id == pid,
-            SaleItem.kind == SaleItemKind.service,
-            Sale.status == SaleStatus.completed,
-            cast(Sale.completed_at, SADate) >= period_start,
-            cast(Sale.completed_at, SADate) <= period_end,
-        )
-        .group_by(Service.name)
+        SELECT
+            service_name,
+            SUM(signed_total) AS total_sales,
+            SUM(quantity)     AS sales_count,
+            SUM(
+                CASE
+                    WHEN fee_is_pct THEN signed_total * fee_value / 100
+                    ELSE fee_value * quantity
+                END
+            ) AS product_fee
+        FROM resolved
+        GROUP BY service_name
+    """), {"tid": tid, "pid": pid,
+           "period_start": period_start, "period_end": period_end}
     )).all()
 
     total_service = D("0")
+    total_fees = D("0")
     total_count = 0
-    for r in svc_agg_rows:
-        total_service += D(str(r.total))
-        total_count += int(r.count)
+    for r in svc_rows:
+        total_service += D(str(r.total_sales))
+        total_fees += D(str(r.product_fee))
+        total_count += int(r.sales_count)
 
     service_rows: list[ServicePerformanceServiceRow] = []
-    for r in svc_agg_rows:
-        total = D(str(r.total))
-        cnt = int(r.count)
+    for r in svc_rows:
+        total = D(str(r.total_sales))
+        fee = D(str(r.product_fee))
+        net = total - fee
+        cnt = int(r.sales_count)
         avg = total / D(cnt) if cnt else D("0")
         pct_sales = (total / total_service * D("100")) if total_service else D("0")
         pct_count = (D(cnt) / D(total_count) * D("100")) if total_count else D("0")
         service_rows.append(ServicePerformanceServiceRow(
             service_name=r.service_name,
-            total_sales=_d(total),
+            total_sales=_d(total.quantize(D("0.01"))),
+            product_fee=_d(fee.quantize(D("0.01"))),
+            net_sales=_d(net.quantize(D("0.01"))),
             sales_count=cnt,
             average_price=_d(avg.quantize(D("0.01"))),
             pct_of_sales=_d(pct_sales.quantize(D("0.1"))),
@@ -989,6 +1031,8 @@ async def service_performance_report(
         period_end=end,
         service_rows=service_rows,
         total_service_sales=_d(total_service.quantize(D("0.01"))),
+        total_service_fees=_d(total_fees.quantize(D("0.01"))),
+        total_net_service_sales=_d((total_service - total_fees).quantize(D("0.01"))),
         total_service_count=total_count,
         average_service_price=_d(avg_service.quantize(D("0.01"))),
         total_retail_sales=_d(total_retail.quantize(D("0.01"))),

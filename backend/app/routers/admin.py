@@ -1007,3 +1007,97 @@ async def backfill_sale_item_links(current_user: AdminUser, db: AsyncSession = D
     await db.commit()
 
     return {"orphans_found": len(orphans), "linked": linked, "unmatched": unmatched}
+
+
+# ── Backfill: set sale_items.service_id from Milano description ──────────────
+# When the legacy CSV importer runs, it tries to resolve each sale_item's
+# description to a service_id via RECEIPT_SERVICE_MAP. If the service didn't
+# exist in the catalog at import time, sale_items.service_id was left NULL and
+# the description sits there as a dangling pointer. Adding the service to the
+# catalog later doesn't retroactively link those rows.
+#
+# This endpoint re-runs that resolution against the *current* catalog so any
+# now-mapped descriptions get their service_id populated. Idempotent: items
+# already linked are skipped; descriptions still unmappable are reported back
+# with counts so the owner can see what's missing.
+#
+# Used by: owner clicks button after adding a missing service (e.g. Olaplex)
+# that Milano had been billing but wasn't yet in the SalonOS catalog.
+
+@router.post("/diagnose/backfill-sale-item-service-ids")
+async def backfill_sale_item_service_ids(
+    current_user: AdminUser, db: AsyncSession = Depends(get_db)
+) -> dict:
+    from sqlalchemy import text as _text
+    from app.legacy_import import RECEIPT_SERVICE_MAP
+
+    tid = current_user.tenant_id
+
+    # Current catalog keyed by service_code (case-insensitive)
+    svc_rows = (await db.execute(
+        _text("SELECT id, service_code FROM services WHERE tenant_id = :tid"),
+        {"tid": tid},
+    )).fetchall()
+    svc_id_by_code: dict[str, uuid.UUID] = {
+        (r.service_code or "").strip().lower(): r.id for r in svc_rows
+    }
+
+    # Orphans: service-kind sale_items with NULL service_id on completed sales.
+    orphans = (await db.execute(
+        _text("""
+            SELECT si.id, si.description
+            FROM sale_items si
+            JOIN sales s ON s.id = si.sale_id
+            WHERE si.tenant_id = :tid
+              AND si.kind::text = 'service'
+              AND si.service_id IS NULL
+              AND s.status::text = 'completed'
+        """),
+        {"tid": tid},
+    )).fetchall()
+
+    linked = 0
+    unmapped_descs: dict[str, int] = {}
+    missing_codes: dict[str, int] = {}
+
+    for o in orphans:
+        desc_key = (o.description or "").strip().lower()
+        if not desc_key:
+            unmapped_descs[o.description or ""] = unmapped_descs.get(o.description or "", 0) + 1
+            continue
+        code = RECEIPT_SERVICE_MAP.get(desc_key)
+        if not code:
+            # Description not known to the importer's map at all.
+            unmapped_descs[o.description] = unmapped_descs.get(o.description, 0) + 1
+            continue
+        svc_id = svc_id_by_code.get(code.lower())
+        if not svc_id:
+            # Map knows the description but catalog still lacks the service.
+            missing_codes[code] = missing_codes.get(code, 0) + 1
+            continue
+        await db.execute(
+            _text("UPDATE sale_items SET service_id = :sid, updated_at = NOW()"
+                  " WHERE id = :id"),
+            {"sid": svc_id, "id": o.id},
+        )
+        linked += 1
+
+    await db.commit()
+
+    return {
+        "orphans_found": len(orphans),
+        "linked": linked,
+        # Descriptions the importer doesn't know how to map at all.
+        # Fix: add the description (case-insensitive) → service_code to
+        # RECEIPT_SERVICE_MAP in legacy_import.py.
+        "unmapped_descriptions": [
+            {"description": d, "count": c}
+            for d, c in sorted(unmapped_descs.items(), key=lambda x: -x[1])
+        ],
+        # service_codes that the importer maps to but aren't in the catalog.
+        # Fix: create the service in /services with this code.
+        "missing_service_codes": [
+            {"service_code": c, "count": n}
+            for c, n in sorted(missing_codes.items(), key=lambda x: -x[1])
+        ],
+    }

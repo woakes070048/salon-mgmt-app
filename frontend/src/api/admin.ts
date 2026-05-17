@@ -194,6 +194,19 @@ export function backfillSaleItemLinks(): Promise<BackfillSaleItemLinksResult> {
   return api.post<BackfillSaleItemLinksResult>('/admin/diagnose/backfill-sale-item-links', {})
 }
 
+export interface BackfillSaleItemServiceIdsResult {
+  orphans_found: number
+  linked: number
+  unmapped_descriptions: { description: string; count: number }[]
+  missing_service_codes: { service_code: string; count: number }[]
+}
+
+export function backfillSaleItemServiceIds(): Promise<BackfillSaleItemServiceIdsResult> {
+  return api.post<BackfillSaleItemServiceIdsResult>(
+    '/admin/diagnose/backfill-sale-item-service-ids', {}
+  )
+}
+
 // ── Legacy data import ────────────────────────────────────────────────────────
 
 export interface ImportResult {
