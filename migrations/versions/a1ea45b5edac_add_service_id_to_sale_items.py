@@ -1,6 +1,6 @@
 """Add service_id to sale_items for direct service lookup without appointment_item join
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a1ea45b5edac
 Revises: z1a2b3c4d5e6
 Create Date: 2026-05-17
 """
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = 'a1b2c3d4e5f6'
+revision = 'a1ea45b5edac'
 down_revision = 'z1a2b3c4d5e6'
 branch_labels = None
 depends_on = None
