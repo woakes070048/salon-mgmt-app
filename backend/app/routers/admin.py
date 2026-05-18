@@ -1101,3 +1101,35 @@ async def backfill_sale_item_service_ids(
             for c, n in sorted(missing_codes.items(), key=lambda x: -x[1])
         ],
     }
+
+
+# ── Diagnostic: catch + return the Payroll Detail exception as JSON ──────────
+# The actual /reports/payroll-detail endpoint returns a generic 500 when
+# something Pydantic-validates or NULL-explodes, and Cloud Run's response
+# tracebacks aren't accessible from the browser network tab. This wrapper
+# runs the same handler with try/except and surfaces the exception so we can
+# see what's actually failing. Temporary — remove once root cause is fixed.
+
+@router.get("/diagnose/payroll-detail-error")
+async def diagnose_payroll_detail_error(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+    provider_id: str = "",
+    start: str = "",
+    end: str = "",
+) -> dict:
+    import traceback
+    from app.routers.reports import payroll_detail_report
+    try:
+        result = await payroll_detail_report(
+            current_user=current_user, db=db,
+            provider_id=provider_id, start=start, end=end,
+        )
+        return {"ok": True, "service_rows_count": len(result.service_rows)}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error_type": type(e).__name__,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
