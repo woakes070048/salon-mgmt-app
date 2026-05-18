@@ -1119,9 +1119,9 @@ async def diagnose_payroll_detail_error(
     end: str = "",
 ) -> dict:
     import traceback
-    from app.routers.reports import payroll_detail_report
+    from app.routers.reports import _payroll_detail_report_impl
     try:
-        result = await payroll_detail_report(
+        result = await _payroll_detail_report_impl(
             current_user=current_user, db=db,
             provider_id=provider_id, start=start, end=end,
         )

@@ -576,6 +576,35 @@ async def payroll_detail_report(
     start: str = Query(..., description="YYYY-MM-DD"),
     end: str = Query(..., description="YYYY-MM-DD"),
 ) -> PayrollDetailReport:
+    # Wrap the whole handler so unhandled exceptions are surfaced via the
+    # HTTPException detail field instead of an opaque 500 "Internal Server
+    # Error". Lets the frontend display the real Python exception in the UI,
+    # which is much faster to diagnose than digging through Cloud Run logs.
+    # TODO once root cause for P-PERF-RECONCILE regressions is fixed, evaluate
+    # whether to keep this or scope to a global handler.
+    try:
+        return await _payroll_detail_report_impl(
+            current_user=current_user, db=db,
+            provider_id=provider_id, start=start, end=end,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        from fastapi import HTTPException as _HE
+        raise _HE(
+            status_code=500,
+            detail=f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+        )
+
+
+async def _payroll_detail_report_impl(
+    current_user,
+    db,
+    provider_id: str,
+    start: str,
+    end: str,
+) -> PayrollDetailReport:
     from datetime import date as _date
     from decimal import Decimal as D
     from app.models.client import Client

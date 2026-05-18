@@ -34,7 +34,7 @@ export default function PayrollDetailPage() {
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: listProviders })
   const activeProviders = providers.filter(p => p.has_appointments)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['payroll-detail', query?.providerId, query?.start, query?.end],
     queryFn: () => getPayrollDetail(query!.providerId, query!.start, query!.end),
     enabled: !!query,
@@ -140,7 +140,11 @@ export default function PayrollDetailPage() {
         </div>
 
         {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {isError && <p className="text-sm text-destructive">Failed to load.</p>}
+        {isError && (
+          <pre className="text-xs text-destructive whitespace-pre-wrap bg-destructive/10 p-3 rounded border border-destructive/30">
+            {error instanceof Error ? error.message : 'Failed to load.'}
+          </pre>
+        )}
 
         {data && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
