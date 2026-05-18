@@ -612,7 +612,7 @@ async def _payroll_detail_report_impl(
     from app.models.service import Service, ServiceCategory, ServiceFeeHistory
     from app.models.provider_service_price import ProviderServicePrice
     from app.models.schedule import ProviderSchedule, ProviderScheduleException
-    from sqlalchemy import cast, orm
+    from sqlalchemy import cast, orm, text
     from sqlalchemy.types import Date as SADate
     ServiceViaAppt = orm.aliased(Service, flat=True)
     ServiceViaSaleItem = orm.aliased(Service, flat=True)
